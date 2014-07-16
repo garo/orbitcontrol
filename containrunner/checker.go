@@ -20,23 +20,63 @@ type ContainerChecks struct {
 }
 
 type CheckEngine struct {
-	jobs    chan ContainerChecks
-	results chan CheckResult
+	jobs           chan ContainerChecks
+	results        chan CheckResult
+	configurations chan MachineConfiguration
 }
 
 func (ce *CheckEngine) Start(workers int, configResultPublisher ConfigResultPublisher) {
-	jobs := make(chan ContainerChecks, 100)
-	results := make(chan CheckResult, 100)
+	ce.jobs = make(chan ContainerChecks, 100)
+	ce.results = make(chan CheckResult, 100)
+	ce.configurations = make(chan MachineConfiguration, 1)
 
 	for w := 1; w <= workers; w++ {
-		go CheckWorker(w, jobs, results)
+		go IndividualCheckWorker(w, ce.jobs, ce.results)
 	}
+
+	go CheckIntervalWorker(ce.configurations, ce.jobs)
+	go PublishCheckResultWorker(ce.results, configResultPublisher)
 
 }
 
 func (ce *CheckEngine) Stop() {
 	close(ce.jobs)
 	close(ce.results)
+	close(ce.configurations)
+}
+
+func (ce *CheckEngine) PushNewConfiguration(configuration MachineConfiguration) {
+	ce.configurations <- configuration
+}
+
+func CheckIntervalWorker(configurations <-chan MachineConfiguration, jobsChannel chan<- ContainerChecks) {
+	var configuration *MachineConfiguration
+	alive := true
+	for alive {
+		select {
+		case newConf, alive := <-configurations:
+			if alive {
+				configuration = &newConf
+			}
+		default:
+			if configuration != nil {
+				for name, container := range configuration.Containers {
+					var cc ContainerChecks
+					cc.ServiceName = name
+					cc.Checks = container.Checks
+					//fmt.Printf("Pushing check %+v\n", cc)
+					jobsChannel <- cc
+				}
+			}
+		}
+		time.Sleep(time.Millisecond * 100)
+
+	}
+
+}
+
+func GetEndpointForContainer(container ContainerConfiguration) string {
+	return "the-endpoint"
 }
 
 func PublishCheckResultWorker(results chan CheckResult, configResultPublisher ConfigResultPublisher) {
@@ -45,7 +85,7 @@ func PublishCheckResultWorker(results chan CheckResult, configResultPublisher Co
 	}
 }
 
-func CheckWorker(id int, jobs <-chan ContainerChecks, results chan<- CheckResult) {
+func IndividualCheckWorker(id int, jobs <-chan ContainerChecks, results chan<- CheckResult) {
 	for j := range jobs {
 		var result CheckResult
 		result.ServiceName = j.ServiceName

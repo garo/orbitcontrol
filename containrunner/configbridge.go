@@ -3,9 +3,6 @@ package containrunner
 import "github.com/coreos/go-etcd/etcd"
 import "strings"
 import "encoding/json"
-import "github.com/op/go-logging"
-
-var log = logging.MustGetLogger("configbridge")
 
 type ServiceStateChangeEvent struct {
 	ServiceName string
@@ -26,14 +23,18 @@ func (c ConfigResultEtcdPublisher) PublishServiceState(serviceName string, endpo
 	key := "/services/" + serviceName + "/" + endpoint
 
 	_, err := c.etcd.Get(key, false, false)
-	if err != nil {
-		if ok == false {
-			log.Info(LogString(ServiceStateChangeEvent{serviceName, endpoint, ok}))
-			c.etcd.Delete(key, true)
-		}
-	} else if ok == true {
+	if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
+		panic(err)
+	}
+	if ok == true && err != nil && strings.HasPrefix(err.Error(), "100:") {
 		// Key did not exists so we need to add the key
-		log.Info(LogString(ServiceStateChangeEvent{serviceName, endpoint, ok}))
+		log.Info(LogEvent(ServiceStateChangeEvent{serviceName, endpoint, ok}))
+	} else if ok == false {
+		if err == nil {
+			log.Info(LogEvent(ServiceStateChangeEvent{serviceName, endpoint, ok}))
+		}
+
+		c.etcd.Delete(key, true)
 	}
 
 	if ok {
@@ -47,8 +48,12 @@ func GetMachineConfigurationByTags(etcd *etcd.Client, tags []string) (MachineCon
 	for _, tag := range tags {
 
 		res, err := etcd.Get("/machineconfigurations/tags/"+tag, true, true)
-		if err != nil {
+		if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
 			panic(err)
+		}
+
+		if err != nil {
+			continue
 		}
 
 		for _, node := range res.Node.Nodes {
@@ -57,7 +62,9 @@ func GetMachineConfigurationByTags(etcd *etcd.Client, tags []string) (MachineCon
 			}
 
 			if node.Dir == true && strings.HasSuffix(node.Key, "/services") {
-				configuration.Containers = make(map[string]ContainerConfiguration, len(node.Nodes))
+				if configuration.Containers == nil {
+					configuration.Containers = make(map[string]ContainerConfiguration, len(node.Nodes))
+				}
 
 				for _, service := range node.Nodes {
 					if service.Dir == false {

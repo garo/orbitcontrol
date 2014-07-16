@@ -21,7 +21,7 @@ func (s *ConfigBridgeSuite) TestGetMachineConfiguration(c *C) {
 
 	_, err := s.etcd.CreateDir("/machineconfigurations/tags/testtag/", 10)
 	if err != nil {
-		panic(err)
+		s.etcd.DeleteDir("/machineconfigurations/tags/testtag/")
 	}
 
 	var comet = `

@@ -33,6 +33,12 @@ type ContainerDetails struct {
 	Container *docker.Container
 }
 
+type ContainerLogEvent struct {
+	Event          string
+	ContainerImage string
+	ContainerName  string
+}
+
 func GetServiceConfigurationString() string {
 	return ""
 }
@@ -59,7 +65,6 @@ func GetDockerClient() *docker.Client {
 func FindMatchingContainers(existing_containers []ContainerDetails, required_container ContainerConfiguration) (found_containers []ContainerDetails, remaining_containers []ContainerDetails) {
 
 	for _, container_details := range existing_containers {
-
 		found := true
 		if container_details.Container.Config.Image != required_container.Config.Image {
 			remaining_containers = append(remaining_containers, container_details)
@@ -142,7 +147,7 @@ func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
 		}
 	}
 
-	fmt.Println("Remaining running containers: ", len(existing_containers))
+	//	fmt.Println("Remaining running containers: ", len(existing_containers))
 	var imageRegexp = regexp.MustCompile("(.+):")
 	for _, container := range existing_containers {
 		m := imageRegexp.FindStringSubmatch(container.Image)
@@ -150,7 +155,9 @@ func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
 
 		for _, authoritative_name := range conf.AuthoritativeNames {
 			if authoritative_name == image {
-				fmt.Printf("Found container %+v which we are authoritative but its running. Going to stop it...\n", container)
+				log.Info(LogEvent(ContainerLogEvent{"stop-and-remove", container.Container.Image, container.Container.Name}))
+
+				//fmt.Printf("Found container %+v which we are authoritative but its running. Going to stop it...\n", container)
 				client.StopContainer(container.Container.ID, 10)
 				err = client.RemoveContainer(docker.RemoveContainerOptions{container.Container.ID, true, true})
 				if err != nil {
@@ -176,7 +183,7 @@ func LaunchContainer(containerConfiguration ContainerConfiguration, client *dock
 	}
 
 	if image == nil {
-		fmt.Println("Need to pull image", containerConfiguration.Config.Image)
+		log.Info(LogEvent(ContainerLogEvent{"pulling", containerConfiguration.Config.Image, ""}))
 		var pullImageOptions docker.PullImageOptions
 		pullImageOptions.Registry = containerConfiguration.Config.Image[0:strings.Index(containerConfiguration.Config.Image, "/")]
 		imagePlusTag := containerConfiguration.Config.Image[strings.Index(containerConfiguration.Config.Image, "/")+1:]
@@ -184,7 +191,6 @@ func LaunchContainer(containerConfiguration ContainerConfiguration, client *dock
 		pullImageOptions.Tag = imagePlusTag[strings.Index(imagePlusTag, ":")+1:]
 		pullImageOptions.OutputStream = os.Stderr
 
-		fmt.Printf("PullImageOptions %+v\n", pullImageOptions)
 		ret := client.PullImage(pullImageOptions, docker.AuthConfiguration{})
 		fmt.Println("Ret:", ret)
 	}
@@ -200,7 +206,8 @@ func LaunchContainer(containerConfiguration ContainerConfiguration, client *dock
 		containerConfiguration.HostConfig.DnsSearch = []string{"services.dev.docker"}
 	}
 
-	fmt.Println("Creating container", options)
+	//fmt.Println("Creating container", options)
+	log.Info(LogEvent(ContainerLogEvent{"create-and-launch", containerConfiguration.Config.Image, containerConfiguration.Name}))
 	container, err := client.CreateContainer(options)
 	if err != nil {
 		panic(err)

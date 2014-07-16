@@ -4,14 +4,22 @@ import "time"
 import "reflect"
 import "encoding/json"
 
-type LogEvent struct {
+type LogEventStruct struct {
 	Timestamp string      `json:"ts"`
 	T         string      `json:"t"`
 	E         interface{} `json:"e"`
 }
 
-func LogString(e interface{}) string {
-	le := LogEvent{time.Now().Format(time.RFC3339), reflect.TypeOf(e).Name(), e}
+type LogMsg struct {
+	Msg string
+}
+
+func LogString(msg string) string {
+	return LogEvent(LogMsg{msg})
+}
+
+func LogEvent(e interface{}) string {
+	le := LogEventStruct{time.Now().Format(time.RFC3339), reflect.TypeOf(e).Name(), e}
 	bytearr, err := json.Marshal(le)
 	if err != nil {
 		panic(err)

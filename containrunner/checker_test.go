@@ -7,6 +7,7 @@ import . "gopkg.in/check.v1"
 import "net/http"
 import "net/http/httptest"
 import "fmt"
+import "time"
 
 //import "github.com/stretchr/testify/mock"
 
@@ -92,13 +93,13 @@ func (s *CheckerSuite) TestHttpServiceNotResponding(c *C) {
 	c.Assert(CheckHttpService(checkFalse), Equals, false)
 }
 
-func (s *CheckerSuite) TestCheckWorker(c *C) {
+func (s *CheckerSuite) TestIndividualCheckWorker(c *C) {
 	checkFalse := ContainerCheck{Type: "http", Url: "http://localhost:10/returnFoobar", ExpectString: "OK"}
 
 	jobs := make(chan ContainerChecks, 10)
 	results := make(chan CheckResult, 10)
 
-	go CheckWorker(1, jobs, results)
+	go IndividualCheckWorker(1, jobs, results)
 	jobs <- ContainerChecks{"failingService", []ContainerCheck{checkFalse}}
 	close(jobs)
 
@@ -126,5 +127,28 @@ func (s *CheckerSuite) TestPublishCheckResultWorker(c *C) {
 	go PublishCheckResultWorker(results, rp)
 	results <- CheckResult{"okService", "da-endpoint", true}
 	close(results)
+
+}
+
+func (s *CheckerSuite) TestCheckIntervalWorker(c *C) {
+
+	configurations := make(chan MachineConfiguration, 1)
+	jobsChannel := make(chan ContainerChecks, 100)
+
+	var mc MachineConfiguration
+	mc.Containers = make(map[string]ContainerConfiguration)
+	v := ContainerConfiguration{}
+	v.Name = "myContainer"
+	v.Checks = []ContainerCheck{{"dummyCheck", "", true, "", ""}}
+	mc.Containers["myContainer"] = v
+
+	go CheckIntervalWorker(configurations, jobsChannel)
+	configurations <- mc
+	time.Sleep(time.Millisecond * 150)
+	close(configurations)
+	cc := <-jobsChannel
+
+	c.Assert(cc.ServiceName, Equals, "myContainer")
+	c.Assert(cc.Checks[0].Type, Equals, "dummyCheck")
 
 }

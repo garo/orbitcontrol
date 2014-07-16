@@ -10,7 +10,7 @@ type TestLoggingEvent struct {
 
 func BenchmarkJSONLogging(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		LogString(TestLoggingEvent{i})
+		LogEvent(TestLoggingEvent{i})
 	}
 }
 
