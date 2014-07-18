@@ -31,25 +31,27 @@ func (s *MySuite) TestGetServiceConfigurationString(c *C) {
 func (s *MySuite) TestGetConfiguration(c *C) {
 	var str = `
 {
-	"containers": {
+	"services": {
 		"comet": {
 			"Name": "comet",
-			"HostConfig" : {
-				"Binds": [
-					"/tmp:/data"
-				],
-				"NetworkMode" : "host"				
-			},
-			"Config": {
-				"Env": [
-					"NODE_ENV=production"
-				],
-				"AttachStderr": false,
-				"AttachStdin": false,
-				"AttachStdout": false,
-				"OpenStdin": false,
-				"Hostname": "comet",
-				"Image": "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+			"Container" : {
+				"HostConfig" : {
+					"Binds": [
+						"/tmp:/data"
+					],
+					"NetworkMode" : "host"				
+				},
+				"Config": {
+					"Env": [
+						"NODE_ENV=production"
+					],
+					"AttachStderr": false,
+					"AttachStdin": false,
+					"AttachStdout": false,
+					"OpenStdin": false,
+					"Hostname": "comet",
+					"Image": "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+				}
 			},
 			"checks" : [
 				{
@@ -67,20 +69,20 @@ func (s *MySuite) TestGetConfiguration(c *C) {
 
 	var conf = GetConfiguration(str)
 
-	var service ContainerConfiguration = conf.Containers["comet"]
+	var service ServiceConfiguration = conf.Services["comet"]
 	c.Assert(service.Name, Equals, "comet")
-	c.Assert(service.HostConfig.NetworkMode, Equals, "host")
-	c.Assert(service.HostConfig.Binds[0], Equals, "/tmp:/data")
+	c.Assert(service.Container.HostConfig.NetworkMode, Equals, "host")
+	c.Assert(service.Container.HostConfig.Binds[0], Equals, "/tmp:/data")
 
-	c.Assert(service.Config.Env[0], Equals, "NODE_ENV=production")
-	c.Assert(service.Config.Image, Equals, "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2")
+	c.Assert(service.Container.Config.Env[0], Equals, "NODE_ENV=production")
+	c.Assert(service.Container.Config.Image, Equals, "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2")
 
 	//ßc.Assert(conf.DockerOptions["Env"][0], Equals, "NODE_ENV=production")
 
-	c.Assert(service.Config.AttachStderr, Equals, false)
-	c.Assert(service.Config.AttachStdin, Equals, false)
-	c.Assert(service.Config.AttachStdout, Equals, false)
-	c.Assert(service.Config.Hostname, Equals, "comet")
+	c.Assert(service.Container.Config.AttachStderr, Equals, false)
+	c.Assert(service.Container.Config.AttachStdin, Equals, false)
+	c.Assert(service.Container.Config.AttachStdout, Equals, false)
+	c.Assert(service.Container.Config.Hostname, Equals, "comet")
 
 	check := service.Checks[0]
 	c.Assert(check.Type, Equals, "http")
@@ -94,21 +96,24 @@ func (s *MySuite) TestConvergeContainers(c *C) {
 	"containers": {
 		"comet": {
 			"Name": "comet",
-			"HostConfig" : {
-				"Binds": [
-					"/tmp:/data"
-				],
-				"NetworkMode" : "host"				
-			},
-			"Config": {
-				"Env": [
-					"NODE_ENV=production"
-				],
-				"AttachStderr": false,
-				"AttachStdin": false,
-				"AttachStdout": false,
-				"OpenStdin": false,
-				"Image": "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+			"Container" : {
+				"HostConfig" : {
+					"Binds": [
+						"/tmp:/data"
+					],
+					"NetworkMode" : "host"				
+				},
+				"Config": {
+					"Env": [
+						"NODE_ENV=production"
+					],
+					"AttachStderr": false,
+					"AttachStdin": false,
+					"AttachStdout": false,
+					"OpenStdin": false,
+					"Hostname": "comet",
+					"Image": "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+				}
 			},
 			"checks" : [
 				{
@@ -116,7 +121,7 @@ func (s *MySuite) TestConvergeContainers(c *C) {
 					"url" : "http://localhost:3500/check"
 				}
 			]
-		}	
+		}
 	},
 	"authoritative_names": [
 		"registry.applifier.info:5000/comet"

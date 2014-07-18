@@ -14,19 +14,19 @@ type CheckResult struct {
 	Ok          bool
 }
 
-type ContainerChecks struct {
+type ServiceChecks struct {
 	ServiceName string
-	Checks      []ContainerCheck
+	Checks      []ServiceCheck
 }
 
 type CheckEngine struct {
-	jobs           chan ContainerChecks
+	jobs           chan ServiceChecks
 	results        chan CheckResult
 	configurations chan MachineConfiguration
 }
 
 func (ce *CheckEngine) Start(workers int, configResultPublisher ConfigResultPublisher) {
-	ce.jobs = make(chan ContainerChecks, 100)
+	ce.jobs = make(chan ServiceChecks, 100)
 	ce.results = make(chan CheckResult, 100)
 	ce.configurations = make(chan MachineConfiguration, 1)
 
@@ -49,7 +49,7 @@ func (ce *CheckEngine) PushNewConfiguration(configuration MachineConfiguration) 
 	ce.configurations <- configuration
 }
 
-func CheckIntervalWorker(configurations <-chan MachineConfiguration, jobsChannel chan<- ContainerChecks) {
+func CheckIntervalWorker(configurations <-chan MachineConfiguration, jobsChannel chan<- ServiceChecks) {
 	var configuration *MachineConfiguration
 	alive := true
 	for alive {
@@ -60,10 +60,10 @@ func CheckIntervalWorker(configurations <-chan MachineConfiguration, jobsChannel
 			}
 		default:
 			if configuration != nil {
-				for name, container := range configuration.Containers {
-					var cc ContainerChecks
+				for name, service := range configuration.Services {
+					var cc ServiceChecks
 					cc.ServiceName = name
-					cc.Checks = container.Checks
+					cc.Checks = service.Checks
 					//fmt.Printf("Pushing check %+v\n", cc)
 					jobsChannel <- cc
 				}
@@ -75,7 +75,7 @@ func CheckIntervalWorker(configurations <-chan MachineConfiguration, jobsChannel
 
 }
 
-func GetEndpointForContainer(container ContainerConfiguration) string {
+func GetEndpointForContainer(service ServiceConfiguration) string {
 	return "the-endpoint"
 }
 
@@ -85,7 +85,7 @@ func PublishCheckResultWorker(results chan CheckResult, configResultPublisher Co
 	}
 }
 
-func IndividualCheckWorker(id int, jobs <-chan ContainerChecks, results chan<- CheckResult) {
+func IndividualCheckWorker(id int, jobs <-chan ServiceChecks, results chan<- CheckResult) {
 	for j := range jobs {
 		var result CheckResult
 		result.ServiceName = j.ServiceName
@@ -94,7 +94,7 @@ func IndividualCheckWorker(id int, jobs <-chan ContainerChecks, results chan<- C
 	}
 }
 
-func CheckService(checks []ContainerCheck) (ok bool) {
+func CheckService(checks []ServiceCheck) (ok bool) {
 
 	for _, check := range checks {
 		switch check.Type {
@@ -112,7 +112,7 @@ func CheckService(checks []ContainerCheck) (ok bool) {
 	return ok
 }
 
-func CheckHttpService(check ContainerCheck) (ok bool) {
+func CheckHttpService(check ServiceCheck) (ok bool) {
 	ok = true
 
 	transport := http.Transport{
@@ -156,6 +156,6 @@ func CheckHttpService(check ContainerCheck) (ok bool) {
 	return ok
 }
 
-func CheckDummyService(check ContainerCheck) (ok bool) {
+func CheckDummyService(check ServiceCheck) (ok bool) {
 	return check.DummyResult
 }

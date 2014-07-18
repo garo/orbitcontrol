@@ -21,8 +21,8 @@ func (s *CheckerSuite) SetUpTest(c *C) {
 }
 
 func (s *CheckerSuite) TestDummyService(c *C) {
-	checkTrue := ContainerCheck{Type: "dummy", DummyResult: true}
-	checkFalse := ContainerCheck{Type: "dummy", DummyResult: false}
+	checkTrue := ServiceCheck{Type: "dummy", DummyResult: true}
+	checkFalse := ServiceCheck{Type: "dummy", DummyResult: false}
 
 	c.Assert(CheckDummyService(checkTrue), Equals, true)
 	c.Assert(CheckDummyService(checkFalse), Equals, false)
@@ -30,7 +30,7 @@ func (s *CheckerSuite) TestDummyService(c *C) {
 
 func (s *CheckerSuite) TestCheckService(c *C) {
 
-	checks := []ContainerCheck{{Type: "dummy", DummyResult: true}}
+	checks := []ServiceCheck{{Type: "dummy", DummyResult: true}}
 
 	ok := CheckService(checks)
 	c.Assert(ok, Equals, true)
@@ -46,8 +46,8 @@ func (s *CheckerSuite) TestHttpService(c *C) {
 	}))
 	defer ts.Close()
 
-	checkTrue := ContainerCheck{Type: "http", Url: ts.URL + "/check"}
-	checkFalse := ContainerCheck{Type: "http", Url: ts.URL + "/notFound"}
+	checkTrue := ServiceCheck{Type: "http", Url: ts.URL + "/check"}
+	checkFalse := ServiceCheck{Type: "http", Url: ts.URL + "/notFound"}
 
 	c.Assert(CheckHttpService(checkTrue), Equals, true)
 	c.Assert(CheckHttpService(checkFalse), Equals, false)
@@ -63,8 +63,8 @@ func (s *CheckerSuite) TestHttpServiceExpectHttpStatus(c *C) {
 	}))
 	defer ts.Close()
 
-	checkTrue := ContainerCheck{Type: "http", Url: ts.URL + "/check", ExpectHttpStatus: "200"}
-	checkFalse := ContainerCheck{Type: "http", Url: ts.URL + "/notFound", ExpectHttpStatus: "404"}
+	checkTrue := ServiceCheck{Type: "http", Url: ts.URL + "/check", ExpectHttpStatus: "200"}
+	checkFalse := ServiceCheck{Type: "http", Url: ts.URL + "/notFound", ExpectHttpStatus: "404"}
 
 	c.Assert(CheckHttpService(checkTrue), Equals, true)
 	c.Assert(CheckHttpService(checkFalse), Equals, true)
@@ -80,27 +80,27 @@ func (s *CheckerSuite) TestHttpServiceExpectHttpString(c *C) {
 	}))
 	defer ts.Close()
 
-	checkTrue := ContainerCheck{Type: "http", Url: ts.URL + "/returnOK", ExpectString: "OK"}
-	checkFalse := ContainerCheck{Type: "http", Url: ts.URL + "/returnFoobar", ExpectString: "OK"}
+	checkTrue := ServiceCheck{Type: "http", Url: ts.URL + "/returnOK", ExpectString: "OK"}
+	checkFalse := ServiceCheck{Type: "http", Url: ts.URL + "/returnFoobar", ExpectString: "OK"}
 
 	c.Assert(CheckHttpService(checkTrue), Equals, true)
 	c.Assert(CheckHttpService(checkFalse), Equals, false)
 }
 
 func (s *CheckerSuite) TestHttpServiceNotResponding(c *C) {
-	checkFalse := ContainerCheck{Type: "http", Url: "http://localhost:10/returnFoobar", ExpectString: "OK"}
+	checkFalse := ServiceCheck{Type: "http", Url: "http://localhost:10/returnFoobar", ExpectString: "OK"}
 
 	c.Assert(CheckHttpService(checkFalse), Equals, false)
 }
 
 func (s *CheckerSuite) TestIndividualCheckWorker(c *C) {
-	checkFalse := ContainerCheck{Type: "http", Url: "http://localhost:10/returnFoobar", ExpectString: "OK"}
+	checkFalse := ServiceCheck{Type: "http", Url: "http://localhost:10/returnFoobar", ExpectString: "OK"}
 
-	jobs := make(chan ContainerChecks, 10)
+	jobs := make(chan ServiceChecks, 10)
 	results := make(chan CheckResult, 10)
 
 	go IndividualCheckWorker(1, jobs, results)
-	jobs <- ContainerChecks{"failingService", []ContainerCheck{checkFalse}}
+	jobs <- ServiceChecks{"failingService", []ServiceCheck{checkFalse}}
 	close(jobs)
 
 	result := <-results
@@ -133,14 +133,14 @@ func (s *CheckerSuite) TestPublishCheckResultWorker(c *C) {
 func (s *CheckerSuite) TestCheckIntervalWorker(c *C) {
 
 	configurations := make(chan MachineConfiguration, 1)
-	jobsChannel := make(chan ContainerChecks, 100)
+	jobsChannel := make(chan ServiceChecks, 100)
 
 	var mc MachineConfiguration
-	mc.Containers = make(map[string]ContainerConfiguration)
-	v := ContainerConfiguration{}
+	mc.Services = make(map[string]ServiceConfiguration)
+	v := ServiceConfiguration{}
 	v.Name = "myContainer"
-	v.Checks = []ContainerCheck{{"dummyCheck", "", true, "", ""}}
-	mc.Containers["myContainer"] = v
+	v.Checks = []ServiceCheck{{"dummyCheck", "", true, "", ""}}
+	mc.Services["myContainer"] = v
 
 	go CheckIntervalWorker(configurations, jobsChannel)
 	configurations <- mc

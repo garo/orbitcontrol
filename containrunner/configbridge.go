@@ -20,7 +20,7 @@ type ConfigResultEtcdPublisher struct {
 }
 
 func (c ConfigResultEtcdPublisher) PublishServiceState(serviceName string, endpoint string, ok bool) {
-	key := "/services/" + serviceName + "/" + endpoint
+	key := "/services/" + serviceName + "/endpoints/" + endpoint
 
 	_, err := c.etcd.Get(key, false, false)
 	if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
@@ -62,23 +62,43 @@ func GetMachineConfigurationByTags(etcd *etcd.Client, tags []string) (MachineCon
 			}
 
 			if node.Dir == true && strings.HasSuffix(node.Key, "/services") {
-				if configuration.Containers == nil {
-					configuration.Containers = make(map[string]ContainerConfiguration, len(node.Nodes))
+				if configuration.Services == nil {
+					configuration.Services = make(map[string]ServiceConfiguration, len(node.Nodes))
 				}
 
 				for _, service := range node.Nodes {
 					if service.Dir == false {
-						var containerConfiguration ContainerConfiguration
-						err = json.Unmarshal([]byte(service.Value), &containerConfiguration)
+						var serviceConfiguration ServiceConfiguration
+						err = json.Unmarshal([]byte(service.Value), &serviceConfiguration)
 						if err != nil {
 							panic(err)
 						}
 
 						name := service.Key[len(node.Key)+1:]
-						configuration.Containers[name] = containerConfiguration
+						configuration.Services[name] = serviceConfiguration
 					}
 				}
 			}
+
+			if node.Dir == true && strings.HasSuffix(node.Key, "/haproxy_endpoints") {
+				if configuration.HAProxyEndpoints == nil {
+					configuration.HAProxyEndpoints = make(map[string]HAProxyEndpoint, len(node.Nodes))
+				}
+
+				for _, haProxyEndpoint := range node.Nodes {
+					if haProxyEndpoint.Dir == false {
+						var endpoint HAProxyEndpoint
+						err = json.Unmarshal([]byte(haProxyEndpoint.Value), &endpoint)
+						if err != nil {
+							panic(err)
+						}
+
+						name := haProxyEndpoint.Key[len(node.Key)+1:]
+						configuration.HAProxyEndpoints[name] = endpoint
+					}
+				}
+			}
+
 		}
 	}
 

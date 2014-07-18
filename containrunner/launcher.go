@@ -8,7 +8,7 @@ import "os"
 import "net"
 import "regexp"
 
-type ContainerCheck struct {
+type ServiceCheck struct {
 	Type             string
 	Url              string
 	DummyResult      bool
@@ -17,15 +17,20 @@ type ContainerCheck struct {
 }
 
 type ContainerConfiguration struct {
-	Name       string
 	HostConfig docker.HostConfig
 	Config     docker.Config
-	Checks     []ContainerCheck
+}
+
+type ServiceConfiguration struct {
+	Name      string
+	Checks    []ServiceCheck
+	Container ContainerConfiguration
 }
 
 type MachineConfiguration struct {
-	Containers         map[string]ContainerConfiguration `json:"containers"`
-	AuthoritativeNames []string                          `json:"authoritative_names"`
+	Services           map[string]ServiceConfiguration `json:"services"`
+	HAProxyEndpoints   map[string]HAProxyEndpoint
+	AuthoritativeNames []string `json:"authoritative_names"`
 }
 
 type ContainerDetails struct {
@@ -62,19 +67,19 @@ func GetDockerClient() *docker.Client {
 	return client
 }
 
-func FindMatchingContainers(existing_containers []ContainerDetails, required_container ContainerConfiguration) (found_containers []ContainerDetails, remaining_containers []ContainerDetails) {
+func FindMatchingContainers(existing_containers []ContainerDetails, required_service ServiceConfiguration) (found_containers []ContainerDetails, remaining_containers []ContainerDetails) {
 
 	for _, container_details := range existing_containers {
 		found := true
-		if container_details.Container.Config.Image != required_container.Config.Image {
+		if container_details.Container.Config.Image != required_service.Container.Config.Image {
 			remaining_containers = append(remaining_containers, container_details)
 			continue
 		}
-		if required_container.Config.Hostname != "" && container_details.Container.Config.Hostname != required_container.Config.Hostname {
+		if required_service.Container.Config.Hostname != "" && container_details.Container.Config.Hostname != required_service.Container.Config.Hostname {
 			remaining_containers = append(remaining_containers, container_details)
 			continue
 		}
-		if container_details.Container.Name != required_container.Name {
+		if container_details.Container.Name != required_service.Name {
 			remaining_containers = append(remaining_containers, container_details)
 			continue
 		}
@@ -101,7 +106,7 @@ func FindMatchingContainers(existing_containers []ContainerDetails, required_con
 
 func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
 	var opts docker.ListContainersOptions
-	var ready_for_launch []ContainerConfiguration
+	var ready_for_launch []ServiceConfiguration
 	opts.All = true
 	existing_containers_info, err := client.ListContainers(opts)
 	if err != nil {
@@ -125,16 +130,16 @@ func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
 	}
 
 	var matching_containers []ContainerDetails
-	for _, required_container := range conf.Containers {
-		matching_containers, existing_containers = FindMatchingContainers(existing_containers, required_container)
+	for _, required_service := range conf.Services {
+		matching_containers, existing_containers = FindMatchingContainers(existing_containers, required_service)
 
 		if len(matching_containers) > 1 {
 			fmt.Println("Weird! Found more than one container matching specs: ", matching_containers)
 		}
 
 		if len(matching_containers) == 0 {
-			fmt.Println("No containers found matching ", required_container, ". Marking for launch...")
-			ready_for_launch = append(ready_for_launch, required_container)
+			fmt.Println("No containers found matching ", required_service, ". Marking for launch...")
+			ready_for_launch = append(ready_for_launch, required_service)
 		}
 
 		if len(matching_containers) == 1 {
@@ -174,19 +179,19 @@ func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
 
 }
 
-func LaunchContainer(containerConfiguration ContainerConfiguration, client *docker.Client) {
+func LaunchContainer(serviceConfiguration ServiceConfiguration, client *docker.Client) {
 
 	// Check if we need to pull the image first
-	image, err := client.InspectImage(containerConfiguration.Config.Image)
+	image, err := client.InspectImage(serviceConfiguration.Container.Config.Image)
 	if err != nil && err != docker.ErrNoSuchImage {
 		panic(err)
 	}
 
 	if image == nil {
-		log.Info(LogEvent(ContainerLogEvent{"pulling", containerConfiguration.Config.Image, ""}))
+		log.Info(LogEvent(ContainerLogEvent{"pulling", serviceConfiguration.Container.Config.Image, ""}))
 		var pullImageOptions docker.PullImageOptions
-		pullImageOptions.Registry = containerConfiguration.Config.Image[0:strings.Index(containerConfiguration.Config.Image, "/")]
-		imagePlusTag := containerConfiguration.Config.Image[strings.Index(containerConfiguration.Config.Image, "/")+1:]
+		pullImageOptions.Registry = serviceConfiguration.Container.Config.Image[0:strings.Index(serviceConfiguration.Container.Config.Image, "/")]
+		imagePlusTag := serviceConfiguration.Container.Config.Image[strings.Index(serviceConfiguration.Container.Config.Image, "/")+1:]
 		pullImageOptions.Repository = pullImageOptions.Registry + "/" + imagePlusTag[0:strings.Index(imagePlusTag, ":")]
 		pullImageOptions.Tag = imagePlusTag[strings.Index(imagePlusTag, ":")+1:]
 		pullImageOptions.OutputStream = os.Stderr
@@ -196,24 +201,24 @@ func LaunchContainer(containerConfiguration ContainerConfiguration, client *dock
 	}
 
 	var options docker.CreateContainerOptions
-	options.Name = containerConfiguration.Name
-	options.Config = &containerConfiguration.Config
+	options.Name = serviceConfiguration.Name
+	options.Config = &serviceConfiguration.Container.Config
 
 	var addresses []string
 	addresses, err = net.LookupHost("skydns.services.dev.docker")
 	if err == nil {
-		containerConfiguration.HostConfig.Dns = []string{addresses[0]}
-		containerConfiguration.HostConfig.DnsSearch = []string{"services.dev.docker"}
+		serviceConfiguration.Container.HostConfig.Dns = []string{addresses[0]}
+		serviceConfiguration.Container.HostConfig.DnsSearch = []string{"services.dev.docker"}
 	}
 
 	//fmt.Println("Creating container", options)
-	log.Info(LogEvent(ContainerLogEvent{"create-and-launch", containerConfiguration.Config.Image, containerConfiguration.Name}))
+	log.Info(LogEvent(ContainerLogEvent{"create-and-launch", serviceConfiguration.Container.Config.Image, serviceConfiguration.Name}))
 	container, err := client.CreateContainer(options)
 	if err != nil {
 		panic(err)
 	}
 
-	err = client.StartContainer(container.ID, &containerConfiguration.HostConfig)
+	err = client.StartContainer(container.ID, &serviceConfiguration.Container.HostConfig)
 	if err != nil {
 		panic(err)
 	}
