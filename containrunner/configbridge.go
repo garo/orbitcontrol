@@ -82,12 +82,12 @@ func GetMachineConfigurationByTags(etcd *etcd.Client, tags []string) (MachineCon
 
 			if node.Dir == true && strings.HasSuffix(node.Key, "/haproxy_endpoints") {
 				if configuration.HAProxyEndpoints == nil {
-					configuration.HAProxyEndpoints = make(map[string]HAProxyEndpoint, len(node.Nodes))
+					configuration.HAProxyEndpoints = make(map[string]*HAProxyEndpoint, len(node.Nodes))
 				}
 
 				for _, haProxyEndpoint := range node.Nodes {
 					if haProxyEndpoint.Dir == false {
-						var endpoint HAProxyEndpoint
+						endpoint := new(HAProxyEndpoint)
 						err = json.Unmarshal([]byte(haProxyEndpoint.Value), &endpoint)
 						if err != nil {
 							panic(err)
@@ -102,5 +102,34 @@ func GetMachineConfigurationByTags(etcd *etcd.Client, tags []string) (MachineCon
 		}
 	}
 
+	GetHAProxyEndpoints(etcd, &configuration)
+
 	return configuration, nil
+}
+
+func GetHAProxyEndpoints(etcd *etcd.Client, mc *MachineConfiguration) error {
+	for serviceName, haProxyEndpoint := range mc.HAProxyEndpoints {
+
+		res, err := etcd.Get("/services/"+serviceName+"/endpoints", true, true)
+		if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
+			panic(err)
+		}
+
+		if err != nil {
+			continue
+		}
+
+		if haProxyEndpoint.BackendServers == nil {
+			haProxyEndpoint.BackendServers = make(map[string]string)
+		}
+
+		for _, endpoint := range res.Node.Nodes {
+			if endpoint.Dir == false {
+				name := endpoint.Key[len(res.Node.Key)+1:]
+				haProxyEndpoint.BackendServers[name] = endpoint.Value
+			}
+		}
+	}
+
+	return nil
 }

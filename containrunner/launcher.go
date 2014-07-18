@@ -11,26 +11,28 @@ import "regexp"
 type ServiceCheck struct {
 	Type             string
 	Url              string
+	HostPort         string
 	DummyResult      bool
 	ExpectHttpStatus string
 	ExpectString     string
 }
 
-type ContainerConfiguration struct {
-	HostConfig docker.HostConfig
-	Config     docker.Config
-}
-
 type ServiceConfiguration struct {
-	Name      string
-	Checks    []ServiceCheck
-	Container ContainerConfiguration
+	Name         string
+	EndpointPort int
+	Checks       []ServiceCheck
+	Container    *ContainerConfiguration
 }
 
 type MachineConfiguration struct {
 	Services           map[string]ServiceConfiguration `json:"services"`
-	HAProxyEndpoints   map[string]HAProxyEndpoint
+	HAProxyEndpoints   map[string]*HAProxyEndpoint
 	AuthoritativeNames []string `json:"authoritative_names"`
+}
+
+type ContainerConfiguration struct {
+	HostConfig docker.HostConfig
+	Config     docker.Config
 }
 
 type ContainerDetails struct {
@@ -131,6 +133,10 @@ func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
 
 	var matching_containers []ContainerDetails
 	for _, required_service := range conf.Services {
+		if required_service.Container == nil {
+			continue
+		}
+
 		matching_containers, existing_containers = FindMatchingContainers(existing_containers, required_service)
 
 		if len(matching_containers) > 1 {

@@ -133,6 +133,22 @@ func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherWithPreviousExistingVal
 
 }
 
-func (s *ConfigBridgeSuite) TestGetEligibleServicesForHAProxyByTags(c *C) {
+func (s *ConfigBridgeSuite) TestGetHAProxyEndpoints(c *C) {
+	var mc MachineConfiguration
+	mc.HAProxyEndpoints = make(map[string]*HAProxyEndpoint)
+
+	var endpoint = new(HAProxyEndpoint)
+	mc.HAProxyEndpoints["testService2"] = endpoint
+	endpoint.Name = "testService2"
+
+	_, err := s.etcd.Set("/services/testService2/endpoints/10.1.2.3:1234", "foobar", 10)
+	if err != nil {
+		panic(err)
+	}
+
+	err = GetHAProxyEndpoints(s.etcd, &mc)
+	c.Assert(err, IsNil)
+
+	c.Assert(mc.HAProxyEndpoints["testService2"].BackendServers["10.1.2.3:1234"], Equals, "foobar")
 
 }

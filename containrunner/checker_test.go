@@ -17,7 +17,6 @@ type CheckerSuite struct {
 var _ = Suite(&CheckerSuite{})
 
 func (s *CheckerSuite) SetUpTest(c *C) {
-
 }
 
 func (s *CheckerSuite) TestDummyService(c *C) {
@@ -34,6 +33,15 @@ func (s *CheckerSuite) TestCheckService(c *C) {
 
 	ok := CheckService(checks)
 	c.Assert(ok, Equals, true)
+}
+
+func (s *CheckerSuite) TestTCPService(c *C) {
+	checkTrue := ServiceCheck{Type: "tcp", HostPort: "127.0.0.1:22"}
+	checkFalse := ServiceCheck{Type: "tcp", HostPort: "127.0.0.1:1"}
+	//checkTrueExpect := ServiceCheck{Type: "tcp", HostPort: "127.0.0.1:22", ExpectString: "SSH"}
+
+	c.Assert(CheckTcpService(checkTrue), Equals, true)
+	c.Assert(CheckTcpService(checkFalse), Equals, false)
 }
 
 func (s *CheckerSuite) TestHttpService(c *C) {
@@ -99,14 +107,16 @@ func (s *CheckerSuite) TestIndividualCheckWorker(c *C) {
 	jobs := make(chan ServiceChecks, 10)
 	results := make(chan CheckResult, 10)
 
-	go IndividualCheckWorker(1, jobs, results)
-	jobs <- ServiceChecks{"failingService", []ServiceCheck{checkFalse}}
+	go IndividualCheckWorker(1, jobs, results, "10.0.0.0")
+	jobs <- ServiceChecks{"failingService", 55, []ServiceCheck{checkFalse}}
 	close(jobs)
 
 	result := <-results
 
 	c.Assert(result.Ok, Equals, false)
 	c.Assert(result.ServiceName, Equals, "failingService")
+	c.Assert(result.Endpoint, Equals, "10.0.0.0:55")
+
 }
 
 type TestConfigResultPublisher struct {
@@ -139,12 +149,12 @@ func (s *CheckerSuite) TestCheckIntervalWorker(c *C) {
 	mc.Services = make(map[string]ServiceConfiguration)
 	v := ServiceConfiguration{}
 	v.Name = "myContainer"
-	v.Checks = []ServiceCheck{{"dummyCheck", "", true, "", ""}}
+	v.Checks = []ServiceCheck{{"dummyCheck", "", "", true, "", ""}}
 	mc.Services["myContainer"] = v
 
-	go CheckIntervalWorker(configurations, jobsChannel)
+	go CheckIntervalWorker(configurations, jobsChannel, 50)
 	configurations <- mc
-	time.Sleep(time.Millisecond * 150)
+	time.Sleep(time.Millisecond * 80)
 	close(configurations)
 	cc := <-jobsChannel
 

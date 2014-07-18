@@ -3,7 +3,6 @@ package containrunner
 import . "gopkg.in/check.v1"
 
 //import "fmt"
-
 //import "strings"
 
 type HAProxySuite struct {
@@ -69,7 +68,6 @@ balance leastconn
 `
 	service.BackendServers = make(map[string]string)
 	service.BackendServers["10.0.0.1:1234"] = ""
-	service.BackendServers["10.0.0.2:1234"] = ""
 	hac.Services["comet"] = service
 
 	str, err := hac.GetServicesSection()
@@ -80,7 +78,6 @@ balance leastconn
 	mode http
 	balance leastconn
 	server 10.0.0.1:1234 check inter 2000 rise 2 fall 2 maxconn 40
-	server 10.0.0.2:1234 check inter 2000 rise 2 fall 2 maxconn 40
 
 `)
 
@@ -101,7 +98,6 @@ balance leastconn
 `
 	service.BackendServers = make(map[string]string)
 	service.BackendServers["10.0.0.1:1234"] = ""
-	service.BackendServers["10.0.0.2:1234"] = ""
 	hac.Services["comet"] = service
 
 	str, err := hac.GetServicesSection()
@@ -112,7 +108,6 @@ balance leastconn
 	mode http
 	balance leastconn
 	server 10.0.0.1:1234 check inter 2000 rise 2 fall 2 maxconn 40
-	server 10.0.0.2:1234 check inter 2000 rise 2 fall 2 maxconn 40
 
 `)
 

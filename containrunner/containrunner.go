@@ -9,9 +9,11 @@ import "reflect"
 var log = logging.MustGetLogger("containrunner")
 
 type Containrunner struct {
-	Tags          []string
-	EtcdEndpoints []string
-	exitChannel   chan bool
+	Tags              []string
+	EtcdEndpoints     []string
+	exitChannel       chan bool
+	EndpointAddress   string
+	CheckIntervalInMs int
 }
 
 func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
@@ -21,7 +23,7 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 	etcd := etcd.NewClient(containrunner.EtcdEndpoints)
 	docker := GetDockerClient()
 	var checkEngine CheckEngine
-	checkEngine.Start(4, ConfigResultEtcdPublisher{etcd, 10})
+	checkEngine.Start(4, ConfigResultEtcdPublisher{etcd, 10}, containrunner.EndpointAddress, containrunner.CheckIntervalInMs)
 
 	var machineConfiguration MachineConfiguration
 
