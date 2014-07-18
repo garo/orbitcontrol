@@ -4,6 +4,19 @@ import "github.com/coreos/go-etcd/etcd"
 import "strings"
 import "encoding/json"
 
+type MachineConfiguration struct {
+	Services             map[string]ServiceConfiguration `json:"services"`
+	HAProxyConfiguration *HAProxyConfiguration
+	AuthoritativeNames   []string `json:"authoritative_names"`
+}
+
+type ServiceConfiguration struct {
+	Name         string
+	EndpointPort int
+	Checks       []ServiceCheck
+	Container    *ContainerConfiguration
+}
+
 type ServiceStateChangeEvent struct {
 	ServiceName string
 	Endpoint    string
@@ -81,8 +94,8 @@ func GetMachineConfigurationByTags(etcd *etcd.Client, tags []string) (MachineCon
 			}
 
 			if node.Dir == true && strings.HasSuffix(node.Key, "/haproxy_endpoints") {
-				if configuration.HAProxyEndpoints == nil {
-					configuration.HAProxyEndpoints = make(map[string]*HAProxyEndpoint, len(node.Nodes))
+				if configuration.HAProxyConfiguration == nil {
+					configuration.HAProxyConfiguration = NewHAProxyConfiguration()
 				}
 
 				for _, haProxyEndpoint := range node.Nodes {
@@ -94,7 +107,7 @@ func GetMachineConfigurationByTags(etcd *etcd.Client, tags []string) (MachineCon
 						}
 
 						name := haProxyEndpoint.Key[len(node.Key)+1:]
-						configuration.HAProxyEndpoints[name] = endpoint
+						configuration.HAProxyConfiguration.Endpoints[name] = endpoint
 					}
 				}
 			}
@@ -108,7 +121,7 @@ func GetMachineConfigurationByTags(etcd *etcd.Client, tags []string) (MachineCon
 }
 
 func GetHAProxyEndpoints(etcd *etcd.Client, mc *MachineConfiguration) error {
-	for serviceName, haProxyEndpoint := range mc.HAProxyEndpoints {
+	for serviceName, haProxyEndpoint := range mc.HAProxyConfiguration.Endpoints {
 
 		res, err := etcd.Get("/services/"+serviceName+"/endpoints", true, true)
 		if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found

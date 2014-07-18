@@ -8,6 +8,15 @@ import "net/http"
 import "strings"
 import "io/ioutil"
 
+type ServiceCheck struct {
+	Type             string
+	Url              string
+	HostPort         string
+	DummyResult      bool
+	ExpectHttpStatus string
+	ExpectString     string
+}
+
 type CheckResult struct {
 	ServiceName string
 	Endpoint    string

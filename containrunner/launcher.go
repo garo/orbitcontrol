@@ -8,28 +8,6 @@ import "os"
 import "net"
 import "regexp"
 
-type ServiceCheck struct {
-	Type             string
-	Url              string
-	HostPort         string
-	DummyResult      bool
-	ExpectHttpStatus string
-	ExpectString     string
-}
-
-type ServiceConfiguration struct {
-	Name         string
-	EndpointPort int
-	Checks       []ServiceCheck
-	Container    *ContainerConfiguration
-}
-
-type MachineConfiguration struct {
-	Services           map[string]ServiceConfiguration `json:"services"`
-	HAProxyEndpoints   map[string]*HAProxyEndpoint
-	AuthoritativeNames []string `json:"authoritative_names"`
-}
-
 type ContainerConfiguration struct {
 	HostConfig docker.HostConfig
 	Config     docker.Config

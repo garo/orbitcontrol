@@ -90,9 +90,9 @@ func (s *ConfigBridgeSuite) TestGetMachineConfiguration(c *C) {
 	c.Assert(configuration.Services["comet"].Checks[0].Type, Equals, "http")
 	c.Assert(configuration.Services["comet"].Checks[0].Url, Equals, "http://localhost:3500/check")
 
-	c.Assert(configuration.HAProxyEndpoints["scribed"].Name, Equals, "scribed")
-	c.Assert(configuration.HAProxyEndpoints["scribed"].Config.PerServer, Equals, "")
-	c.Assert(configuration.HAProxyEndpoints["scribed"].Config.Backend, Equals, "mode http\n")
+	c.Assert(configuration.HAProxyConfiguration.Endpoints["scribed"].Name, Equals, "scribed")
+	c.Assert(configuration.HAProxyConfiguration.Endpoints["scribed"].Config.PerServer, Equals, "")
+	c.Assert(configuration.HAProxyConfiguration.Endpoints["scribed"].Config.Backend, Equals, "mode http\n")
 
 	_, _ = s.etcd.DeleteDir("/machineconfigurations/tags/testtag/")
 
@@ -135,10 +135,10 @@ func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherWithPreviousExistingVal
 
 func (s *ConfigBridgeSuite) TestGetHAProxyEndpoints(c *C) {
 	var mc MachineConfiguration
-	mc.HAProxyEndpoints = make(map[string]*HAProxyEndpoint)
+	mc.HAProxyConfiguration = NewHAProxyConfiguration()
 
 	var endpoint = new(HAProxyEndpoint)
-	mc.HAProxyEndpoints["testService2"] = endpoint
+	mc.HAProxyConfiguration.Endpoints["testService2"] = endpoint
 	endpoint.Name = "testService2"
 
 	_, err := s.etcd.Set("/services/testService2/endpoints/10.1.2.3:1234", "foobar", 10)
@@ -149,6 +149,6 @@ func (s *ConfigBridgeSuite) TestGetHAProxyEndpoints(c *C) {
 	err = GetHAProxyEndpoints(s.etcd, &mc)
 	c.Assert(err, IsNil)
 
-	c.Assert(mc.HAProxyEndpoints["testService2"].BackendServers["10.1.2.3:1234"], Equals, "foobar")
+	c.Assert(mc.HAProxyConfiguration.Endpoints["testService2"].BackendServers["10.1.2.3:1234"], Equals, "foobar")
 
 }

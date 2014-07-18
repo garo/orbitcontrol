@@ -8,12 +8,24 @@ import "os"
 import "io/ioutil"
 import "time"
 
+// Static HAProxy settings
+type HAProxySettings struct {
+	GlobalSection        string
+	HAProxyBinary        string
+	HAProxyConfigPath    string
+	HAProxyConfigName    string
+	HAProxyReloadCommand string
+}
+
+// Dynamic HAProxy settings receivered from configbridge
 type HAProxyConfiguration struct {
-	GlobalSection     string
-	Services          map[string]HAProxyEndpoint
-	HAProxyBinary     string
-	HAProxyConfigPath string
-	HAProxyConfigName string
+	Endpoints map[string]*HAProxyEndpoint
+}
+
+type HAProxyEndpoint struct {
+	Name           string
+	BackendServers map[string]string
+	Config         HAProxyEndpointConfiguration
 }
 
 type HAProxyEndpointConfiguration struct {
@@ -23,12 +35,7 @@ type HAProxyEndpointConfiguration struct {
 	Backend       string
 }
 
-type HAProxyEndpoint struct {
-	Name           string
-	BackendServers map[string]string
-	Config         HAProxyEndpointConfiguration
-}
-
+// Log structures
 type HAProxyConfigError struct {
 	Config string
 	Error  string
@@ -40,14 +47,61 @@ type HAProxyConfigChangeLog struct {
 	OldConfigBackupFile string
 }
 
-func (hac *HAProxyConfiguration) BuildAndVerifyNewConfig() error {
+func NewHAProxyConfiguration() *HAProxyConfiguration {
+	configuration := new(HAProxyConfiguration)
+	configuration.Endpoints = make(map[string]*HAProxyEndpoint)
 
-	new_config, err := ioutil.TempFile(os.TempDir(), "haproxy_new_config_")
-	defer os.Remove(new_config.Name())
-	config, err := hac.GetNewConfig()
+	return configuration
+}
+
+func NewHAProxyEndpoint() *HAProxyEndpoint {
+	endpoint := new(HAProxyEndpoint)
+	endpoint.BackendServers = make(map[string]string)
+
+	return endpoint
+}
+
+func (hac *HAProxySettings) ConvergeHAProxy(configuration *HAProxyConfiguration) error {
+
+	err := hac.BuildAndVerifyNewConfig(configuration)
 	if err != nil {
 		return err
 	}
+
+	err = hac.ReloadHAProxy()
+
+	return err
+}
+
+func (hac *HAProxySettings) ReloadHAProxy() error {
+	if hac.HAProxyReloadCommand != "" {
+		parts := strings.Fields(hac.HAProxyReloadCommand)
+		head := parts[0]
+		parts = parts[1:len(parts)]
+
+		cmd := exec.Command(head, parts...)
+		err := cmd.Start()
+		if err != nil {
+			panic(err)
+		}
+
+		err = cmd.Wait()
+		return err
+
+	}
+	return nil
+}
+
+func (hac *HAProxySettings) BuildAndVerifyNewConfig(configuration *HAProxyConfiguration) error {
+
+	new_config, err := ioutil.TempFile(os.TempDir(), "haproxy_new_config_")
+	defer os.Remove(new_config.Name())
+	config, err := hac.GetNewConfig(configuration)
+	if err != nil {
+		return err
+	}
+
+	//fmt.Println(config)
 
 	new_config.WriteString(config)
 	new_config.Close()
@@ -99,9 +153,9 @@ func (hac *HAProxyConfiguration) BuildAndVerifyNewConfig() error {
 	return nil
 }
 
-func (hac *HAProxyConfiguration) GetNewConfig() (string, error) {
+func (hac *HAProxySettings) GetNewConfig(configuration *HAProxyConfiguration) (string, error) {
 	str := hac.GlobalSection + "\n"
-	section, err := hac.GetServicesSection()
+	section, err := hac.GetServicesSection(configuration)
 	if err != nil {
 		return "", err
 	}
@@ -110,14 +164,14 @@ func (hac *HAProxyConfiguration) GetNewConfig() (string, error) {
 	return str, nil
 }
 
-func (hac *HAProxyConfiguration) GetServicesSection() (string, error) {
+func (hac *HAProxySettings) GetServicesSection(configuration *HAProxyConfiguration) (string, error) {
 	str := ""
 
-	if hac.Services == nil {
+	if configuration == nil || configuration.Endpoints == nil {
 		return str, nil
 	}
 
-	for name, service := range hac.Services {
+	for name, service := range configuration.Endpoints {
 		if name != service.Name {
 			fmt.Printf("Service: %+v\n", service)
 			return "", errors.New("Service name mismatch: " + name + " != " + service.Name)
@@ -141,7 +195,11 @@ func (hac *HAProxyConfiguration) GetServicesSection() (string, error) {
 			return "", errors.New("Service Listen/Backend/ListenAddress mismatch or missing.")
 		}
 		for backendServer := range service.BackendServers {
-			str += "\tserver " + backendServer + " " + service.Config.PerServer + "\n"
+			str += "\tserver " + name + "-" + backendServer + " " + backendServer
+			if service.Config.PerServer != "" {
+				str += " " + service.Config.PerServer
+			}
+			str += "\n"
 		}
 
 		str += "\n"
