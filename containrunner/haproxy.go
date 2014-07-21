@@ -25,14 +25,12 @@ type HAProxyConfiguration struct {
 type HAProxyEndpoint struct {
 	Name           string
 	BackendServers map[string]string
-	Config         HAProxyEndpointConfiguration
-}
-
-type HAProxyEndpointConfiguration struct {
-	PerServer     string
-	ListenAddress string
-	Listen        string
-	Backend       string
+	Config         struct {
+		PerServer     string
+		ListenAddress string
+		Listen        string
+		Backend       string
+	}
 }
 
 // Log structures
@@ -62,9 +60,13 @@ func NewHAProxyEndpoint() *HAProxyEndpoint {
 }
 
 func (hac *HAProxySettings) ConvergeHAProxy(configuration *HAProxyConfiguration) error {
+	log.Info(LogString("ConvergeHAProxy running"))
+	fmt.Printf("HAProxyConfiguration: %+v\n", configuration)
 
 	err := hac.BuildAndVerifyNewConfig(configuration)
 	if err != nil {
+		log.Error(LogString("Error building new HAProxy configuration"))
+
 		return err
 	}
 
@@ -101,7 +103,7 @@ func (hac *HAProxySettings) BuildAndVerifyNewConfig(configuration *HAProxyConfig
 		return err
 	}
 
-	//fmt.Println(config)
+	fmt.Println(config)
 
 	new_config.WriteString(config)
 	new_config.Close()

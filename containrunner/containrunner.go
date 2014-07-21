@@ -14,6 +14,7 @@ type Containrunner struct {
 	exitChannel       chan bool
 	EndpointAddress   string
 	CheckIntervalInMs int
+	HAProxySettings   HAProxySettings
 }
 
 func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
@@ -47,6 +48,10 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 			}
 			if !reflect.DeepEqual(machineConfiguration, newMachineConfiguration) {
 				log.Info(LogString("MainExecutionLoop got new configuration"))
+
+				go func(containrunner *Containrunner, machineConfiguration MachineConfiguration) {
+					containrunner.HAProxySettings.ConvergeHAProxy(machineConfiguration.HAProxyConfiguration)
+				}(&containrunner, machineConfiguration)
 
 				machineConfiguration = newMachineConfiguration
 				checkEngine.PushNewConfiguration(machineConfiguration)

@@ -74,14 +74,14 @@ func CheckIntervalWorker(configurations <-chan MachineConfiguration, jobsChannel
 			}
 		default:
 			if configuration != nil {
-				fmt.Printf("services: %+v\n", configuration.Services)
+				//fmt.Printf("services: %+v\n", configuration.Services)
 
 				for name, service := range configuration.Services {
 					var cc ServiceChecks
 					cc.ServiceName = name
 					cc.EndpointPort = service.EndpointPort
 					cc.Checks = service.Checks
-					fmt.Printf("Pushing check %+v\n", cc)
+					//fmt.Printf("Pushing check %+v\n", cc)
 					jobsChannel <- cc
 				}
 			}

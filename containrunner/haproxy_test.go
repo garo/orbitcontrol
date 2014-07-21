@@ -127,8 +127,6 @@ func (s *HAProxySuite) TestGetServicesSectionOneListen(c *C) {
 
 	service := HAProxyEndpoint{}
 	service.Name = "comet"
-	service.Config = HAProxyEndpointConfiguration{}
-
 	service.Config.PerServer = "check inter 2000 rise 2 fall 2 maxconn 40"
 	service.Config.ListenAddress = "127.0.0.1:89"
 	service.Config.Listen =
@@ -158,8 +156,6 @@ func (s *HAProxySuite) TestGetServicesSectionOneBackend(c *C) {
 
 	service := HAProxyEndpoint{}
 	service.Name = "comet"
-	service.Config = HAProxyEndpointConfiguration{}
-
 	service.Config.PerServer = "check inter 2000 rise 2 fall 2 maxconn 40"
 	service.Config.Backend =
 		`mode http

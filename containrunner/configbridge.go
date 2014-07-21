@@ -17,12 +17,6 @@ type ServiceConfiguration struct {
 	Container    *ContainerConfiguration
 }
 
-type ServiceStateChangeEvent struct {
-	ServiceName string
-	Endpoint    string
-	IsUp        bool
-}
-
 type ConfigResultPublisher interface {
 	PublishServiceState(serviceName string, endpoint string, ok bool)
 }
@@ -30,6 +24,13 @@ type ConfigResultPublisher interface {
 type ConfigResultEtcdPublisher struct {
 	etcd *etcd.Client
 	ttl  uint64
+}
+
+// Log events
+type ServiceStateChangeEvent struct {
+	ServiceName string
+	Endpoint    string
+	IsUp        bool
 }
 
 func (c ConfigResultEtcdPublisher) PublishServiceState(serviceName string, endpoint string, ok bool) {
