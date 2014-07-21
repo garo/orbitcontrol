@@ -87,9 +87,14 @@ func (c *Containrunner) GetAllServices(etcdClient *etcd.Client) (map[string]Serv
 	services := make(map[string]ServiceConfiguration)
 	var service ServiceConfiguration
 
-	res, err := etcdClient.Get(c.EtcdBasePath+"/services/", true, true)
+	key := c.EtcdBasePath + "/services/"
+	res, err := etcdClient.Get(key, true, true)
 	if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
 		return nil, err
+	}
+
+	if err != nil {
+		return nil, errors.New("No services found. Etcd path was: " + key)
 	}
 
 	for _, node := range res.Node.Nodes {
@@ -104,6 +109,20 @@ func (c *Containrunner) GetAllServices(etcdClient *etcd.Client) (map[string]Serv
 	}
 
 	return services, nil
+}
+
+func (c *Containrunner) TagServiceToTag(service string, tag string, etcdClient *etcd.Client) error {
+	if etcdClient == nil {
+		etcdClient = etcd.NewClient(c.EtcdEndpoints)
+	}
+	key := c.EtcdBasePath + "/machineconfigurations/tags/" + tag + "/services/" + service
+	fmt.Fprintf(os.Stderr, "Set key: %s\n", key)
+	_, err := etcdClient.Set(key, "", 0)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (c *Containrunner) RemoveService(name string, etcdClient *etcd.Client) error {
@@ -154,9 +173,14 @@ func (c *Containrunner) GetKnownTags() ([]string, error) {
 	var tags []string
 	var etcd *etcd.Client = etcd.NewClient(c.EtcdEndpoints)
 
-	res, err := etcd.Get(c.EtcdBasePath+"/machineconfigurations/tags/", true, true)
+	key := c.EtcdBasePath + "/machineconfigurations/tags/"
+	res, err := etcd.Get(key, true, true)
 	if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
 		return nil, err
+	}
+
+	if err != nil {
+		return nil, errors.New("No tags found. Etcd path was: " + key)
 	}
 
 	for _, node := range res.Node.Nodes {

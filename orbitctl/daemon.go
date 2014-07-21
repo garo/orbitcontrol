@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/garo/orbitcontrol/containrunner"
 	"strings"
 )
 
@@ -13,8 +12,6 @@ var (
 		Description: "",
 		Run:         runDaemon,
 	}
-
-	containrunnerInstance containrunner.Containrunner
 
 	machineTags string
 )

@@ -7,6 +7,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/garo/orbitcontrol/containrunner"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -25,10 +26,12 @@ var (
 	globalFlagset = flag.NewFlagSet("orbitctl", flag.ExitOnError)
 
 	globalFlags = struct {
-		Debug         bool
-		EtcdEndpoint  string
-		EtcdKeyPrefix string
+		Debug        bool
+		EtcdEndpoint string
+		EtcdBasePath string
 	}{}
+
+	containrunnerInstance containrunner.Containrunner
 )
 
 type Command struct {
@@ -51,11 +54,15 @@ func init() {
 		cmdTags,
 		cmdServices,
 		cmdImport,
+		cmdTag,
 	}
 
 	globalFlagset.BoolVar(&globalFlags.Debug, "debug", false, "Print out more debug information to stderr")
 	globalFlagset.StringVar(&globalFlags.EtcdEndpoint, "etcd-endpoint", "http://etcd:4001", "Etcd server endpoint as http://host:port[,http://host:port] string")
-	globalFlagset.StringVar(&globalFlags.EtcdKeyPrefix, "etcd-key-prefix", "", "Keyspace for fleet data in etcd")
+	globalFlagset.StringVar(&globalFlags.EtcdBasePath, "etcd-base-path", "/orbit", "Keyspace for orbit control data in etcd")
+
+	containrunnerInstance.EtcdEndpoints = GetEtcdEndpoints()
+	containrunnerInstance.EtcdBasePath = globalFlags.EtcdBasePath
 
 }
 
