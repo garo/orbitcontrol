@@ -54,7 +54,12 @@ func (s *ConfigBridgeSuite) TestGetMachineConfiguration(c *C) {
 	]
 }
 `
-	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/services/comet", comet, 10)
+	_, err = s.etcd.Set("/services/comet/config", comet, 10)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/services/comet", ``, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -80,7 +85,8 @@ func (s *ConfigBridgeSuite) TestGetMachineConfiguration(c *C) {
 	}
 
 	tags := []string{"testtag"}
-	configuration, err := GetMachineConfigurationByTags(s.etcd, tags)
+	var containrunner Containrunner
+	configuration, err := containrunner.GetMachineConfigurationByTags(s.etcd, tags)
 
 	c.Assert(configuration.Services["comet"].Name, Equals, "comet")
 	c.Assert(configuration.Services["comet"].Container.HostConfig.NetworkMode, Equals, "host")
@@ -100,10 +106,10 @@ func (s *ConfigBridgeSuite) TestGetMachineConfiguration(c *C) {
 
 func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherServiceOk(c *C) {
 
-	crep := ConfigResultEtcdPublisher{s.etcd, 5}
+	crep := ConfigResultEtcdPublisher{s.etcd, 5, "/test"}
 	crep.PublishServiceState("testService", "10.1.2.3:1234", true)
 
-	res, err := s.etcd.Get("/services/testService/endpoints/10.1.2.3:1234", false, false)
+	res, err := s.etcd.Get("/test/services/testService/endpoints/10.1.2.3:1234", false, false)
 	if err != nil {
 		panic(err)
 	}
@@ -112,24 +118,24 @@ func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherServiceOk(c *C) {
 	// Note that TTL counts down to zero, so if the machine is under heavy load then the TTL might not be anymore 5
 	c.Assert(res.Node.TTL, Equals, int64(5))
 
-	_, _ = s.etcd.DeleteDir("/services/testService/endpoints/10.1.2.3:1234")
+	_, _ = s.etcd.DeleteDir("/test/services/testService/endpoints/10.1.2.3:1234")
 }
 
 func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherServiceNotOk(c *C) {
 
-	crep := ConfigResultEtcdPublisher{s.etcd, 5}
+	crep := ConfigResultEtcdPublisher{s.etcd, 5, "/test"}
 	crep.PublishServiceState("testService", "10.1.2.3:1234", false)
 
-	_, err := s.etcd.Get("/services/testService/endpoints/10.1.2.3:1234", false, false)
+	_, err := s.etcd.Get("/test/services/testService/endpoints/10.1.2.3:1234", false, false)
 	c.Assert(err, Not(IsNil))
 }
 
 func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherWithPreviousExistingValue(c *C) {
 
-	crep := ConfigResultEtcdPublisher{s.etcd, 5}
+	crep := ConfigResultEtcdPublisher{s.etcd, 5, "/test"}
 	crep.PublishServiceState("testService", "10.1.2.3:1234", true)
 	crep.PublishServiceState("testService", "10.1.2.3:1234", true)
-	_, _ = s.etcd.DeleteDir("/services/testService/endpoints/0.1.2.3:1234")
+	_, _ = s.etcd.DeleteDir("/test/services/testService/endpoints/0.1.2.3:1234")
 
 }
 
@@ -141,14 +147,37 @@ func (s *ConfigBridgeSuite) TestGetHAProxyEndpoints(c *C) {
 	mc.HAProxyConfiguration.Endpoints["testService2"] = endpoint
 	endpoint.Name = "testService2"
 
-	_, err := s.etcd.Set("/services/testService2/endpoints/10.1.2.3:1234", "foobar", 10)
+	_, err := s.etcd.Set("/test/services/testService2/endpoints/10.1.2.3:1234", "foobar", 10)
 	if err != nil {
 		panic(err)
 	}
 
-	err = GetHAProxyEndpoints(s.etcd, &mc)
+	var containrunner Containrunner
+	containrunner.EtcdBasePath = "/test"
+	err = containrunner.GetHAProxyEndpoints(s.etcd, &mc)
 	c.Assert(err, IsNil)
 
 	c.Assert(mc.HAProxyConfiguration.Endpoints["testService2"].BackendServers["10.1.2.3:1234"], Equals, "foobar")
+
+}
+
+func (s *ConfigBridgeSuite) TestGetAllServices(c *C) {
+
+	_, err := s.etcd.Set("/test/services/testService2/config", `{
+"Name" : "testService2",
+"EndpointPort" : 1025
+}`, 10)
+	if err != nil {
+		panic(err)
+	}
+
+	var containrunner Containrunner
+	var services map[string]ServiceConfiguration
+	containrunner.EtcdBasePath = "/test"
+	services, err = containrunner.GetAllServices(s.etcd)
+	c.Assert(err, IsNil)
+
+	c.Assert(services["testService2"].Name, Equals, "testService2")
+	c.Assert(services["testService2"].EndpointPort, Equals, 1025)
 
 }

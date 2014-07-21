@@ -6,7 +6,16 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"os"
+	"strings"
 	"text/tabwriter"
+)
+
+const (
+	cliName = "orbitctl"
+
+	cliDescription = "orbitcrl is a tool to command and distribute services inside containers into sets of machines"
 )
 
 var (
@@ -36,10 +45,16 @@ type Command struct {
 func init() {
 	out = new(tabwriter.Writer)
 	out.Init(os.Stdout, 0, 8, 1, '\t', 0)
-	commands = []*Command{}
+	commands = []*Command{
+		cmdHelp,
+		cmdDaemon,
+		cmdTags,
+		cmdServices,
+		cmdImport,
+	}
 
 	globalFlagset.BoolVar(&globalFlags.Debug, "debug", false, "Print out more debug information to stderr")
-	globalFlagset.StringVar(&globalFlags.EtcdEndpoint, "etcd-endpoint", "etcd:4001", "Etcd server endpoint as http://host:port[,http://host:port] string")
+	globalFlagset.StringVar(&globalFlags.EtcdEndpoint, "etcd-endpoint", "http://etcd:4001", "Etcd server endpoint as http://host:port[,http://host:port] string")
 	globalFlagset.StringVar(&globalFlags.EtcdKeyPrefix, "etcd-key-prefix", "", "Keyspace for fleet data in etcd")
 
 }
@@ -101,4 +116,8 @@ func getFlagsFromEnv(prefix string, fs *flag.FlagSet) {
 		}
 
 	})
+}
+
+func GetEtcdEndpoints() []string {
+	return strings.Split(globalFlags.EtcdEndpoint, ",")
 }

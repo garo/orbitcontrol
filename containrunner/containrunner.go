@@ -12,9 +12,10 @@ type Containrunner struct {
 	Tags              []string
 	EtcdEndpoints     []string
 	exitChannel       chan bool
-	EndpointAddress   string
+	MachineAddress    string
 	CheckIntervalInMs int
 	HAProxySettings   HAProxySettings
+	EtcdBasePath      string
 }
 
 func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
@@ -24,7 +25,7 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 	etcd := etcd.NewClient(containrunner.EtcdEndpoints)
 	docker := GetDockerClient()
 	var checkEngine CheckEngine
-	checkEngine.Start(4, ConfigResultEtcdPublisher{etcd, 10}, containrunner.EndpointAddress, containrunner.CheckIntervalInMs)
+	checkEngine.Start(4, ConfigResultEtcdPublisher{etcd, 10, containrunner.EtcdBasePath}, containrunner.MachineAddress, containrunner.CheckIntervalInMs)
 
 	var machineConfiguration MachineConfiguration
 
@@ -41,7 +42,7 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 				exitChannel <- true
 			}
 		default:
-			newMachineConfiguration, err := GetMachineConfigurationByTags(etcd, containrunner.Tags)
+			newMachineConfiguration, err := containrunner.GetMachineConfigurationByTags(etcd, containrunner.Tags)
 			if err != nil && !strings.HasPrefix(err.Error(), "100:") {
 				log.Info(LogString("Error:" + err.Error()))
 				panic(err)
