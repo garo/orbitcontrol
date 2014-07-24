@@ -90,11 +90,12 @@ func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
 	opts.All = true
 	existing_containers_info, err := client.ListContainers(opts)
 	if err != nil {
-		panic(err)
+		return
 	}
 
 	var existing_containers []ContainerDetails
 	for _, container_info := range existing_containers_info {
+		//fmt.Printf("Got container: %+v\n", container_info)
 		container := ContainerDetails{APIContainers: container_info}
 		container.Container, err = client.InspectContainer(container.ID)
 		if err != nil {
@@ -126,14 +127,15 @@ func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
 			ready_for_launch = append(ready_for_launch, required_service)
 		}
 
-		if len(matching_containers) == 1 {
-			if matching_containers[0].Container.State.Running {
-				fmt.Println("Found one matching container and it's running")
-			} else {
-				fmt.Println("Found one matching container and it's not running!", matching_containers[0])
+		/*
+			if len(matching_containers) == 1 {
+				if matching_containers[0].Container.State.Running {
+					fmt.Println("Found one matching container and it's running")
+				} else {
+					fmt.Println("Found one matching container and it's not running!", matching_containers[0])
+				}
 			}
-
-		}
+		*/
 	}
 
 	//	fmt.Println("Remaining running containers: ", len(existing_containers))
@@ -146,7 +148,7 @@ func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
 			if authoritative_name == image {
 				log.Info(LogEvent(ContainerLogEvent{"stop-and-remove", container.Container.Image, container.Container.Name}))
 
-				//fmt.Printf("Found container %+v which we are authoritative but its running. Going to stop it...\n", container)
+				fmt.Printf("Found container %+v which we are authoritative but its running. Going to stop it...\n", container)
 				client.StopContainer(container.Container.ID, 10)
 				err = client.RemoveContainer(docker.RemoveContainerOptions{container.Container.ID, true, true})
 				if err != nil {
@@ -195,7 +197,41 @@ func LaunchContainer(serviceConfiguration ServiceConfiguration, client *docker.C
 		serviceConfiguration.Container.HostConfig.DnsSearch = []string{"services.dev.docker"}
 	}
 
-	//fmt.Println("Creating container", options)
+	// Check if we need to stop and remove the old container
+	var existing_containers_info []docker.APIContainers
+	existing_containers_info, err = client.ListContainers(docker.ListContainersOptions{All: false})
+	if err != nil {
+		panic(err)
+	}
+
+	for _, container_info := range existing_containers_info {
+		container := ContainerDetails{APIContainers: container_info}
+		container.Container, err = client.InspectContainer(container.ID)
+		if err != nil {
+			fmt.Printf("error inspecting container. %+v\n", err)
+			panic(err)
+		}
+
+		// For some reason the container name has / prefix (eg. "/comet"). Strip it out
+		if container.Container.Name[0] == '/' {
+			container.Container.Name = container.Container.Name[1:]
+		}
+
+		if container.Container.Name == serviceConfiguration.Name {
+			fmt.Printf("Need to delete this old container container info: %+v\n", container_info)
+			err = client.StopContainer(container.ID, 10)
+			if err != nil {
+				fmt.Printf("Could not stop container: %+v. Err: %+v\n", container_info, err)
+			}
+			err = client.RemoveContainer(docker.RemoveContainerOptions{container.ID, true, true})
+			if err != nil {
+				fmt.Printf("Could not remove container: %+v. Err: %+v\n", container_info, err)
+			}
+			break
+		}
+	}
+
+	fmt.Println("Creating container", options)
 	log.Info(LogEvent(ContainerLogEvent{"create-and-launch", serviceConfiguration.Container.Config.Image, serviceConfiguration.Name}))
 	container, err := client.CreateContainer(options)
 	if err != nil {
@@ -204,6 +240,7 @@ func LaunchContainer(serviceConfiguration ServiceConfiguration, client *docker.C
 
 	err = client.StartContainer(container.ID, &serviceConfiguration.Container.HostConfig)
 	if err != nil {
+		log.Error("Could not start container")
 		panic(err)
 	}
 

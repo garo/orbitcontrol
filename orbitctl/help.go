@@ -109,7 +109,7 @@ func printGlobalUsage() {
 		commands,
 		getAllFlags(),
 		cliDescription,
-		"N/A",
+		fmt.Sprintf("Built on %s", builddate),
 	})
 	out.Flush()
 }

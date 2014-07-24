@@ -9,7 +9,7 @@ var (
 	cmdTag = &Command{
 		Name:        "tag",
 		Summary:     "Tag service to a tag",
-		Usage:       "orbitctl tag <service> to <tag>",
+		Usage:       "<service> to <tag>",
 		Description: "",
 		Run:         runTag,
 	}

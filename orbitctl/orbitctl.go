@@ -13,6 +13,8 @@ import (
 	"text/tabwriter"
 )
 
+var builddate string
+
 const (
 	cliName = "orbitctl"
 
@@ -61,14 +63,14 @@ func init() {
 	globalFlagset.StringVar(&globalFlags.EtcdEndpoint, "etcd-endpoint", "http://etcd:4001", "Etcd server endpoint as http://host:port[,http://host:port] string")
 	globalFlagset.StringVar(&globalFlags.EtcdBasePath, "etcd-base-path", "/orbit", "Keyspace for orbit control data in etcd")
 
-	containrunnerInstance.EtcdEndpoints = GetEtcdEndpoints()
-	containrunnerInstance.EtcdBasePath = globalFlags.EtcdBasePath
-
 }
 
 func main() {
 	// parse global arguments
 	globalFlagset.Parse(os.Args[1:])
+
+	containrunnerInstance.EtcdEndpoints = strings.Split(globalFlags.EtcdEndpoint, ",")
+	containrunnerInstance.EtcdBasePath = globalFlags.EtcdBasePath
 
 	var args = globalFlagset.Args()
 
@@ -123,8 +125,4 @@ func getFlagsFromEnv(prefix string, fs *flag.FlagSet) {
 		}
 
 	})
-}
-
-func GetEtcdEndpoints() []string {
-	return strings.Split(globalFlags.EtcdEndpoint, ",")
 }

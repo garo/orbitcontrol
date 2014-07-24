@@ -132,19 +132,42 @@ func CheckService(checks []ServiceCheck) (ok bool) {
 	return ok
 }
 
+type TimeoutConfig struct {
+	ConnectTimeout   time.Duration
+	ReadWriteTimeout time.Duration
+}
+
+func TimeoutDialer(config *TimeoutConfig) func(net, addr string) (c net.Conn, err error) {
+	return func(netw, addr string) (net.Conn, error) {
+		conn, err := net.DialTimeout(netw, addr, config.ConnectTimeout)
+		if err != nil {
+			return nil, err
+		}
+		conn.SetDeadline(time.Now().Add(config.ReadWriteTimeout))
+		return conn, nil
+	}
+}
+
 func CheckHttpService(check ServiceCheck) (ok bool) {
 	ok = true
 
-	transport := http.Transport{
-		Dial: func(network, addr string) (net.Conn, error) {
-			return net.DialTimeout(network, addr, time.Duration(100*time.Millisecond))
+	config := &TimeoutConfig{
+		ConnectTimeout:   100 * time.Millisecond,
+		ReadWriteTimeout: 100 * time.Millisecond,
+	}
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			Dial: TimeoutDialer(config),
 		},
 	}
 
-	client := http.Client{Transport: &transport}
-
 	//fmt.Printf("Checking http url %s\n", check.Url)
 	resp, err := client.Get(check.Url)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
+
 	if err != nil {
 		return false
 	}

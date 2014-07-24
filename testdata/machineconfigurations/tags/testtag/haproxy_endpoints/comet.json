@@ -1,0 +1,10 @@
+{
+	"Name" : "comet",
+	"Config" : {
+		"PerServer" : "check inter 2000",
+		"ListenAddress" : "0.0.0.0:80",
+		"Listen" : "mode http\nbalance leastconn\nstats uri /haproxy-status66",
+		"Backend" : ""
+	}
+}
+

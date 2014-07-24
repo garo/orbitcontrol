@@ -19,7 +19,6 @@ func init() {
 }
 
 func runTags(args []string) (exit int) {
-	containrunnerInstance.EtcdEndpoints = GetEtcdEndpoints()
 
 	tags, err := containrunnerInstance.GetKnownTags()
 	if err != nil {

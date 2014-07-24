@@ -1,30 +1,34 @@
 package containrunner
 
-import "errors"
-import "fmt"
-import "strings"
-import "os/exec"
-import "os"
-import "io/ioutil"
-import "time"
+import (
+	"errors"
+	"fmt"
+	"io/ioutil"
+	"net"
+	"os"
+	"os/exec"
+	"strings"
+	"time"
+)
 
 // Static HAProxy settings
 type HAProxySettings struct {
-	GlobalSection        string
 	HAProxyBinary        string
 	HAProxyConfigPath    string
 	HAProxyConfigName    string
 	HAProxyReloadCommand string
+	HAProxySocket        string
 }
 
 // Dynamic HAProxy settings receivered from configbridge
 type HAProxyConfiguration struct {
-	Endpoints map[string]*HAProxyEndpoint
+	GlobalSection string
+	Endpoints     map[string]*HAProxyEndpoint `json:"-"`
 }
 
 type HAProxyEndpoint struct {
 	Name           string
-	BackendServers map[string]string
+	BackendServers map[string]string `json:"-"`
 	Config         struct {
 		PerServer     string
 		ListenAddress string
@@ -61,7 +65,10 @@ func NewHAProxyEndpoint() *HAProxyEndpoint {
 
 func (hac *HAProxySettings) ConvergeHAProxy(configuration *HAProxyConfiguration) error {
 	log.Info(LogString("ConvergeHAProxy running"))
-	fmt.Printf("HAProxyConfiguration: %+v\n", configuration)
+	if configuration == nil {
+		fmt.Fprintf(os.Stderr, "Error, HAProxy config is still nil!\n")
+		return nil
+	}
 
 	err := hac.BuildAndVerifyNewConfig(configuration)
 	if err != nil {
@@ -70,7 +77,14 @@ func (hac *HAProxySettings) ConvergeHAProxy(configuration *HAProxyConfiguration)
 		return err
 	}
 
-	err = hac.ReloadHAProxy()
+	reload_required, err := hac.UpdateBackends(configuration)
+	if err != nil {
+		log.Error(LogString(fmt.Sprintf("Error updating haproxy via stats socket. Error: %+v", err)))
+		return err
+	}
+	if reload_required {
+		err = hac.ReloadHAProxy()
+	}
 
 	return err
 }
@@ -97,13 +111,18 @@ func (hac *HAProxySettings) ReloadHAProxy() error {
 func (hac *HAProxySettings) BuildAndVerifyNewConfig(configuration *HAProxyConfiguration) error {
 
 	new_config, err := ioutil.TempFile(os.TempDir(), "haproxy_new_config_")
-	defer os.Remove(new_config.Name())
+	if new_config != nil {
+		defer os.Remove(new_config.Name())
+	} else {
+		fmt.Fprintf(os.Stderr, "Error: new_config was nil when creating temp file. Err: %+v\n", err)
+	}
+
 	config, err := hac.GetNewConfig(configuration)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println(config)
+	//fmt.Println(config)
 
 	new_config.WriteString(config)
 	new_config.Close()
@@ -111,11 +130,13 @@ func (hac *HAProxySettings) BuildAndVerifyNewConfig(configuration *HAProxyConfig
 	cmd := exec.Command(hac.HAProxyBinary, "-c", "-f", new_config.Name())
 	stderrPipe, err := cmd.StderrPipe()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Error (cmd.StderrPipe) verifying haproxy config with binary %s. Error: %+v\n", hac.HAProxyBinary, err)
+		return err
 	}
 
 	if err := cmd.Start(); err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Error (cmd.Start) verifying haproxy config with binary %s. Error: %+v\n", hac.HAProxyBinary, err)
+		return err
 	}
 
 	stderr, err := ioutil.ReadAll(stderrPipe)
@@ -156,7 +177,7 @@ func (hac *HAProxySettings) BuildAndVerifyNewConfig(configuration *HAProxyConfig
 }
 
 func (hac *HAProxySettings) GetNewConfig(configuration *HAProxyConfiguration) (string, error) {
-	str := hac.GlobalSection + "\n"
+	str := configuration.GlobalSection + "\n"
 	section, err := hac.GetServicesSection(configuration)
 	if err != nil {
 		return "", err
@@ -209,4 +230,121 @@ func (hac *HAProxySettings) GetServicesSection(configuration *HAProxyConfigurati
 	}
 
 	return str, nil
+}
+
+func (hac *HAProxySettings) UpdateBackends(configuration *HAProxyConfiguration) (bool, error) {
+	c, err := net.Dial("unix", hac.HAProxySocket)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error opening HAProxy socket. Error: %+v\n", err)
+		if c != nil {
+			c.Close()
+		}
+		return true, nil
+	}
+	defer c.Close()
+
+	contains := func(s []string, e string) bool {
+		for _, a := range s {
+			if a == e {
+				return true
+			}
+		}
+		return false
+	}
+
+	_, err = c.Write([]byte("show stat\n"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error on show stat command. Error: %+v\n", err)
+		return true, nil
+	}
+
+	var bytes []byte
+	bytes, err = ioutil.ReadAll(c)
+	lines := strings.Split(string(bytes), "\n")
+
+	c.Close()
+
+	// Build list of currently existing backends in the running haproxy
+	current_backends := make(map[string]map[string]string)
+	enabled_backends := make(map[string][]string)
+
+	for _, line := range lines {
+		if line == "" || line[0] == '#' {
+			continue
+		}
+		parts := strings.Split(line, ",")
+		//fmt.Printf("Read line: %+v\n", line)
+		if parts[1] == "FRONTEND" || parts[1] == "BACKEND" {
+			continue
+		}
+
+		if _, ok := current_backends[parts[0]]; ok == false {
+			current_backends[parts[0]] = make(map[string]string)
+		}
+		current_backends[parts[0]][parts[1]] = parts[17]
+	}
+
+	//fmt.Printf("current backends: %+v\n", current_backends)
+
+	for name, service := range configuration.Endpoints {
+		if _, ok := current_backends[name]; ok == false {
+			fmt.Printf("Restart required: missing section %s\n", name)
+			return true, nil
+		}
+		for backendServer := range service.BackendServers {
+			if _, ok := current_backends[name][name+"-"+backendServer]; ok == false {
+				fmt.Printf("Restart required: missing endpoint %s from section %s\n", name+"-"+backendServer, name)
+				return true, nil
+			}
+			enabled_backends[name] = append(enabled_backends[name], name+"-"+backendServer)
+		}
+	}
+	fmt.Printf("enabled backends: %+v\n", enabled_backends)
+
+	for section_name, section_backends := range current_backends {
+		for backend, backend_status := range section_backends {
+			command := ""
+			if contains(enabled_backends[section_name], backend) == true {
+				if backend_status == "MAINT" {
+					command = "enable server " + section_name + "/" + backend + "\n"
+				}
+			} else {
+				if backend_status != "MAINT" {
+					command = "disable server " + section_name + "/" + backend + "\n"
+				}
+			}
+
+			if command == "" {
+				continue
+			}
+
+			fmt.Printf("executing command: %s", command)
+
+			err := func(command string, socket_name string) error {
+				c, err := net.Dial("unix", socket_name)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error opening HAProxy socket. Error: %+v\n", err)
+					if c != nil {
+						c.Close()
+					}
+					return err
+				}
+				defer c.Close()
+
+				_, err = c.Write([]byte(command))
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error on show stat command. Error: %+v\n", err)
+					return err
+				}
+
+				return nil
+			}(command, hac.HAProxySocket)
+
+			if err != nil {
+				return true, err
+			}
+		}
+	}
+
+	return false, nil
 }

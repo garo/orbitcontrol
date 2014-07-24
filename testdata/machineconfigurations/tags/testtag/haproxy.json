@@ -1,0 +1,5 @@
+{
+"GlobalSection" : "global\nstats socket /var/run/haproxy/admin.sock level admin user haproxy group haproxy\n\tlog 127.0.0.1\tlocal2 info\n\tmaxconn 16000\n \tulimit-n 40000\n\tuser haproxy\t\n\tgroup haproxy\n\tdaemon\n\tquiet\n\tpidfile /var/run/haproxy.pid\n\ndefaults\n\tlog\tglobal\n\tmode http\n\toption httplog\n\toption dontlognull\n\tretries 3\n\toption redispatch\n\tmaxconn\t8000\n\tcontimeout 5000\n\tclitimeout 60000\n\tsrvtimeout 60000\n\n"
+
+}
+

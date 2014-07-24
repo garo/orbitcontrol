@@ -19,7 +19,6 @@ func init() {
 }
 
 func runServices(args []string) (exit int) {
-	containrunnerInstance.EtcdEndpoints = GetEtcdEndpoints()
 
 	if len(args) == 0 {
 		// list services

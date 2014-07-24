@@ -1,0 +1,29 @@
+{
+	"Name": "comet",
+	"EndpointPort":3500,
+	"Container" : {
+		"HostConfig" : {
+			"Binds": [
+				"/tmp:/data"
+			],
+			"NetworkMode" : "host"				
+		},
+		"Config": {
+			"Env": [
+				"NODE_ENV=production"
+			],
+			"AttachStderr": false,
+			"AttachStdin": false,
+			"AttachStdout": false,
+			"OpenStdin": false,
+			"Image": "registry.applifier.info:5000/comet:8fd079b54719d61b6feafbb8056b9ba09ade4760"
+		}
+	},
+	"checks" : [
+		{
+			"type" : "http",
+			"url" : "http://127.0.0.1:3500/check"
+		}
+	]
+}
+
