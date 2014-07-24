@@ -45,7 +45,7 @@ mode http
 		os.Remove("/tmp/haproxy-test-config.cfg")
 	}
 
-	err = settings.ConvergeHAProxy(configuration)
+	err = settings.ConvergeHAProxy(configuration, nil)
 	c.Assert(err, IsNil)
 
 	var bytes []byte

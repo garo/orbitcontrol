@@ -63,7 +63,7 @@ func NewHAProxyEndpoint() *HAProxyEndpoint {
 	return endpoint
 }
 
-func (hac *HAProxySettings) ConvergeHAProxy(configuration *HAProxyConfiguration) error {
+func (hac *HAProxySettings) ConvergeHAProxy(configuration *HAProxyConfiguration, oldConfiguration *HAProxyConfiguration) error {
 	log.Info(LogString("ConvergeHAProxy running"))
 	if configuration == nil {
 		fmt.Fprintf(os.Stderr, "Error, HAProxy config is still nil!\n")
@@ -82,6 +82,12 @@ func (hac *HAProxySettings) ConvergeHAProxy(configuration *HAProxyConfiguration)
 		log.Error(LogString(fmt.Sprintf("Error updating haproxy via stats socket. Error: %+v", err)))
 		return err
 	}
+
+	if oldConfiguration != nil && oldConfiguration.GlobalSection != configuration.GlobalSection {
+		fmt.Fprintf(os.Stderr, "Reloading haproxy because GlobalSection has changed")
+		reload_required = true
+	}
+
 	if reload_required {
 		err = hac.ReloadHAProxy()
 	}
