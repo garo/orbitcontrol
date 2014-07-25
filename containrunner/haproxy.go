@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
 	"text/template"
 	"time"
@@ -29,6 +30,10 @@ type HAProxySettings struct {
 // Dynamic HAProxy settings receivered from configbridge
 type HAProxyConfiguration struct {
 	Template string
+
+	// Map file name -> file contents
+	Files map[string]string
+
 	// First string is service name, second string is backend host:port
 	ServiceBackends map[string]map[string]string `json:"-"`
 }
@@ -57,6 +62,7 @@ type HAProxyConfigChangeLog struct {
 
 func NewHAProxyConfiguration() *HAProxyConfiguration {
 	configuration := new(HAProxyConfiguration)
+	configuration.Files = make(map[string]string)
 	configuration.ServiceBackends = make(map[string]map[string]string)
 
 	return configuration
@@ -89,7 +95,8 @@ func (hac *HAProxySettings) ConvergeHAProxy(cbi ConfigBridgeInterface, configura
 		return err
 	}
 
-	if oldConfiguration != nil && oldConfiguration.Template != configuration.Template {
+	if oldConfiguration != nil && (oldConfiguration.Template != configuration.Template ||
+		!reflect.DeepEqual(oldConfiguration.Files, configuration.Files)) {
 		fmt.Fprintf(os.Stderr, "Reloading haproxy because Template has changed")
 		reload_required = true
 	}
@@ -138,6 +145,15 @@ func (hac *HAProxySettings) BuildAndVerifyNewConfig(cbi ConfigBridgeInterface, c
 
 	new_config.WriteString(config)
 	new_config.Close()
+
+	if configuration.Files != nil {
+		for name, contents := range configuration.Files {
+			err := ioutil.WriteFile(hac.HAProxyConfigPath+"/"+name, []byte(contents), 0644)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
 
 	cmd := exec.Command(hac.HAProxyBinary, "-c", "-f", new_config.Name())
 	stderrPipe, err := cmd.StderrPipe()

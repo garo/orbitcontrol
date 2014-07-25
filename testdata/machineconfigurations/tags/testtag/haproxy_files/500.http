@@ -1,0 +1,5 @@
+HTTP/1.0 500 Service Unavailable
+Cache-Control: no-cache
+Connection: close
+Content-Type: text/html
+

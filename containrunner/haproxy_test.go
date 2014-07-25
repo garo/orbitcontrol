@@ -151,9 +151,25 @@ listen test 127.0.0.1:80
 	mode http
 	backend 127.0.0.1:81
 `
+	configuration.Files["500.http"] = `HTTP/1.0 500 Service Unavailable
+Cache-Control: no-cache
+Connection: close
+Content-Type: text/html
+
+`
 
 	err := settings.BuildAndVerifyNewConfig(moc, configuration)
 	c.Assert(err, IsNil)
+
+	bytes, err := ioutil.ReadFile(settings.HAProxyConfigPath + "/500.http")
+	c.Assert(err, IsNil)
+	c.Assert(string(bytes), Equals, `HTTP/1.0 500 Service Unavailable
+Cache-Control: no-cache
+Connection: close
+Content-Type: text/html
+
+`)
+
 }
 
 func (s *HAProxySuite) TestUpdateBackendsUpdateRequiredWithNewBackendSection(c *C) {

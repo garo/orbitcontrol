@@ -123,23 +123,43 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 		return nil, err
 	}
 
-	for _, file := range files {
-		if !file.IsDir() {
-			panic(errors.New("LoadConfigurationsFromFiles: File " + file.Name() + " is not a directory!"))
+	for _, tag := range files {
+		if !tag.IsDir() {
+			panic(errors.New("LoadConfigurationsFromFiles: File " + tag.Name() + " is not a directory!"))
 		}
 
 		var mc MachineConfiguration
 		var bytes []byte
 
-		fname := startpath + "/machineconfigurations/tags/" + file.Name() + "/haproxy.tpl"
+		fname := startpath + "/machineconfigurations/tags/" + tag.Name() + "/haproxy.tpl"
 		bytes, err = ioutil.ReadFile(fname)
 		if err == nil {
 			mc.HAProxyConfiguration = NewHAProxyConfiguration()
-			fmt.Fprintf(os.Stderr, "Loading haproxy config for tag %s from file %s\n", file.Name(), fname)
+			fmt.Fprintf(os.Stderr, "Loading haproxy config for tag %s from file %s\n", tag.Name(), fname)
 			mc.HAProxyConfiguration.Template = string(bytes)
 		}
 
-		oc.MachineConfigurations[file.Name()] = mc
+		files, err = ioutil.ReadDir(startpath + "/machineconfigurations/tags/" + tag.Name() + "/haproxy_files/")
+		if err == nil {
+			for _, file := range files {
+				if file.IsDir() {
+					panic(errors.New("LoadConfigurationsFromFiles: File " + file.Name() + " is a directory when its not allowed"))
+				}
+				fname := startpath + "/machineconfigurations/tags/" + tag.Name() + "/haproxy_files/" + file.Name()
+
+				fmt.Fprintf(os.Stderr, "Loading haproxy static file %s for tag %s from file %s\n", file.Name(), tag.Name(), fname)
+
+				bytes, err = ioutil.ReadFile(fname)
+				if err != nil {
+					panic(errors.New(fmt.Sprintf("LoadConfigurationsFromFiles: Could not load static haproxy file %s. Error: %+v", fname, err)))
+
+				}
+				mc.HAProxyConfiguration.Files[file.Name()] = string(bytes)
+
+			}
+		}
+
+		oc.MachineConfigurations[tag.Name()] = mc
 
 	}
 
@@ -172,9 +192,20 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 		etcdClient.CreateDir(c.EtcdBasePath+"/machineconfigurations/tags/"+tag, 0)
 
 		if mc.HAProxyConfiguration != nil {
-			_, err := etcdClient.Set(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/haproxy_config", string(mc.HAProxyConfiguration.Template), 0)
+			_, err := etcdClient.Set(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/haproxy_config", mc.HAProxyConfiguration.Template, 0)
 			if err != nil {
 				return err
+			}
+
+			if mc.HAProxyConfiguration.Files != nil {
+				for name, contents := range mc.HAProxyConfiguration.Files {
+					// TODO: implement old file removal
+
+					_, err := etcdClient.Set(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/haproxy_files/"+name, contents, 0)
+					if err != nil {
+						return err
+					}
+				}
 			}
 		}
 	}

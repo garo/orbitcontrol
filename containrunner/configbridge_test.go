@@ -1,10 +1,9 @@
 package containrunner
 
-import . "gopkg.in/check.v1"
-
-import "github.com/coreos/go-etcd/etcd"
-
-//import "strings"
+import (
+	"github.com/coreos/go-etcd/etcd"
+	. "gopkg.in/check.v1"
+)
 
 type ConfigBridgeSuite struct {
 	etcd *etcd.Client
@@ -52,6 +51,15 @@ func (s *ConfigBridgeSuite) TestLoadOrbitConfigurationFromFiles(c *C) {
 			"\tclitimeout 60000\n"+
 			"\tsrvtimeout 60000\n"+
 			"\n")
+
+	c.Assert(orbitConfiguration.MachineConfigurations["testtag"].HAProxyConfiguration.Files["500.http"], Equals,
+		`HTTP/1.0 500 Service Unavailable
+Cache-Control: no-cache
+Connection: close
+Content-Type: text/html
+
+`)
+
 	c.Assert(orbitConfiguration.Services["comet"].Name, Equals, "comet")
 	c.Assert(orbitConfiguration.Services["comet"].EndpointPort, Equals, 3500)
 	c.Assert(orbitConfiguration.Services["comet"].Checks[0].Type, Equals, "http")
@@ -70,7 +78,16 @@ func (s *ConfigBridgeSuite) TestUploadOrbitConfigurationToEtcd(c *C) {
 	err = ct.UploadOrbitConfigurationToEtcd(orbitConfiguration, s.etcd)
 	c.Assert(err, IsNil)
 
-	res, err := s.etcd.Get("/test/machineconfigurations/tags/testtag/haproxy_config", true, true)
+	res, err := s.etcd.Get("/test/machineconfigurations/tags/testtag/haproxy_files/500.http", true, true)
+	c.Assert(err, IsNil)
+	c.Assert(res.Node.Value, Equals, `HTTP/1.0 500 Service Unavailable
+Cache-Control: no-cache
+Connection: close
+Content-Type: text/html
+
+`)
+
+	res, err = s.etcd.Get("/test/machineconfigurations/tags/testtag/haproxy_config", true, true)
 	c.Assert(err, IsNil)
 
 	c.Assert(res.Node.Value, Equals,
