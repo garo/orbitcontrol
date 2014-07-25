@@ -60,7 +60,7 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 				log.Info(LogString("MainExecutionLoop got new configuration"))
 
 				go func(containrunner *Containrunner, machineConfiguration MachineConfiguration, oldMachineConfiguration MachineConfiguration) {
-					containrunner.HAProxySettings.ConvergeHAProxy(machineConfiguration.HAProxyConfiguration, oldMachineConfiguration.HAProxyConfiguration)
+					containrunner.HAProxySettings.ConvergeHAProxy(containrunner, machineConfiguration.HAProxyConfiguration, oldMachineConfiguration.HAProxyConfiguration)
 				}(&containrunner, newMachineConfiguration, machineConfiguration)
 
 				machineConfiguration = newMachineConfiguration
@@ -72,7 +72,7 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 				lastConverge = time.Now()
 
 				go func(containrunner *Containrunner, machineConfiguration MachineConfiguration) {
-					containrunner.HAProxySettings.ConvergeHAProxy(machineConfiguration.HAProxyConfiguration, nil)
+					containrunner.HAProxySettings.ConvergeHAProxy(containrunner, machineConfiguration.HAProxyConfiguration, nil)
 				}(&containrunner, newMachineConfiguration)
 			}
 

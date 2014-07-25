@@ -1,6 +1,7 @@
 package containrunner
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -8,8 +9,13 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"text/template"
 	"time"
 )
+
+type ConfigBridgeInterface interface {
+	GetHAProxyEndpointsForService(service_name string) (map[string]string, error)
+}
 
 // Static HAProxy settings
 type HAProxySettings struct {
@@ -22,19 +28,19 @@ type HAProxySettings struct {
 
 // Dynamic HAProxy settings receivered from configbridge
 type HAProxyConfiguration struct {
-	GlobalSection string
-	Endpoints     map[string]*HAProxyEndpoint `json:"-"`
+	Template string
+	// First string is service name, second string is backend host:port
+	ServiceBackends map[string]map[string]string `json:"-"`
+}
+
+type BackendParameters struct {
+	Nickname string
+	HostPort string
 }
 
 type HAProxyEndpoint struct {
 	Name           string
 	BackendServers map[string]string `json:"-"`
-	Config         struct {
-		PerServer     string
-		ListenAddress string
-		Listen        string
-		Backend       string
-	}
 }
 
 // Log structures
@@ -51,7 +57,7 @@ type HAProxyConfigChangeLog struct {
 
 func NewHAProxyConfiguration() *HAProxyConfiguration {
 	configuration := new(HAProxyConfiguration)
-	configuration.Endpoints = make(map[string]*HAProxyEndpoint)
+	configuration.ServiceBackends = make(map[string]map[string]string)
 
 	return configuration
 }
@@ -63,14 +69,14 @@ func NewHAProxyEndpoint() *HAProxyEndpoint {
 	return endpoint
 }
 
-func (hac *HAProxySettings) ConvergeHAProxy(configuration *HAProxyConfiguration, oldConfiguration *HAProxyConfiguration) error {
+func (hac *HAProxySettings) ConvergeHAProxy(cbi ConfigBridgeInterface, configuration *HAProxyConfiguration, oldConfiguration *HAProxyConfiguration) error {
 	log.Info(LogString("ConvergeHAProxy running"))
 	if configuration == nil {
 		fmt.Fprintf(os.Stderr, "Error, HAProxy config is still nil!\n")
 		return nil
 	}
 
-	err := hac.BuildAndVerifyNewConfig(configuration)
+	err := hac.BuildAndVerifyNewConfig(cbi, configuration)
 	if err != nil {
 		log.Error(LogString("Error building new HAProxy configuration"))
 
@@ -83,8 +89,8 @@ func (hac *HAProxySettings) ConvergeHAProxy(configuration *HAProxyConfiguration,
 		return err
 	}
 
-	if oldConfiguration != nil && oldConfiguration.GlobalSection != configuration.GlobalSection {
-		fmt.Fprintf(os.Stderr, "Reloading haproxy because GlobalSection has changed")
+	if oldConfiguration != nil && oldConfiguration.Template != configuration.Template {
+		fmt.Fprintf(os.Stderr, "Reloading haproxy because Template has changed")
 		reload_required = true
 	}
 
@@ -114,7 +120,7 @@ func (hac *HAProxySettings) ReloadHAProxy() error {
 	return nil
 }
 
-func (hac *HAProxySettings) BuildAndVerifyNewConfig(configuration *HAProxyConfiguration) error {
+func (hac *HAProxySettings) BuildAndVerifyNewConfig(cbi ConfigBridgeInterface, configuration *HAProxyConfiguration) error {
 
 	new_config, err := ioutil.TempFile(os.TempDir(), "haproxy_new_config_")
 	if new_config != nil {
@@ -123,7 +129,7 @@ func (hac *HAProxySettings) BuildAndVerifyNewConfig(configuration *HAProxyConfig
 		fmt.Fprintf(os.Stderr, "Error: new_config was nil when creating temp file. Err: %+v\n", err)
 	}
 
-	config, err := hac.GetNewConfig(configuration)
+	config, err := hac.GetNewConfig(cbi, configuration)
 	if err != nil {
 		return err
 	}
@@ -182,60 +188,50 @@ func (hac *HAProxySettings) BuildAndVerifyNewConfig(configuration *HAProxyConfig
 	return nil
 }
 
-func (hac *HAProxySettings) GetNewConfig(configuration *HAProxyConfiguration) (string, error) {
-	str := configuration.GlobalSection + "\n"
-	section, err := hac.GetServicesSection(configuration)
+func (hac *HAProxySettings) GetNewConfig(cbi ConfigBridgeInterface, configuration *HAProxyConfiguration) (string, error) {
+
+	funcMap := template.FuncMap{
+		// The name "title" is what the function will be called in the template text.
+		"Endpoints": func(service_name string) ([]BackendParameters, error) {
+			backend_servers, ok := configuration.ServiceBackends[service_name]
+			var err error
+			if ok == false {
+
+				backend_servers, err = cbi.GetHAProxyEndpointsForService(service_name)
+
+				if err != nil {
+					return nil, err
+				}
+				configuration.ServiceBackends[service_name] = backend_servers
+			}
+
+			var backends []BackendParameters
+			for hostport, _ := range backend_servers {
+				backends = append(backends, BackendParameters{
+					Nickname: service_name + "-" + hostport,
+					HostPort: hostport,
+				})
+			}
+
+			return backends, nil
+		},
+	}
+
+	tmpl, err := template.New("main").Funcs(funcMap).Parse(configuration.Template)
 	if err != nil {
+		log.Fatalf("parsing: %s", err)
 		return "", err
 	}
-	str += section
 
-	return str, nil
-}
-
-func (hac *HAProxySettings) GetServicesSection(configuration *HAProxyConfiguration) (string, error) {
-	str := ""
-
-	if configuration == nil || configuration.Endpoints == nil {
-		return str, nil
+	output := new(bytes.Buffer)
+	// Run the template to verify the output.
+	err = tmpl.Execute(output, "the go programming language")
+	if err != nil {
+		log.Fatalf("execution: %s", err)
+		return "", err
 	}
 
-	for name, service := range configuration.Endpoints {
-		if name != service.Name {
-			fmt.Printf("Service: %+v\n", service)
-			return "", errors.New("Service name mismatch: " + name + " != " + service.Name)
-		}
-
-		if service.Config.Listen != "" && service.Config.ListenAddress != "" {
-			str += "listen " + service.Name + " " + service.Config.ListenAddress + "\n"
-			for _, line := range strings.Split(service.Config.Listen, "\n") {
-				if line != "" && line != "\n" {
-					str += "\t" + line + "\n"
-				}
-			}
-		} else if service.Config.Backend != "" && service.Config.ListenAddress == "" {
-			str += "backend " + service.Name + "\n"
-			for _, line := range strings.Split(service.Config.Backend, "\n") {
-				if line != "" && line != "\n" {
-					str += "\t" + line + "\n"
-				}
-			}
-		} else {
-			return "", errors.New("Service Listen/Backend/ListenAddress mismatch or missing.")
-		}
-		for backendServer := range service.BackendServers {
-			str += "\tserver " + name + "-" + backendServer + " " + backendServer
-			if service.Config.PerServer != "" {
-				str += " " + service.Config.PerServer
-			}
-			str += "\n"
-		}
-
-		str += "\n"
-
-	}
-
-	return str, nil
+	return output.String(), nil
 }
 
 func (hac *HAProxySettings) UpdateBackends(configuration *HAProxyConfiguration) (bool, error) {
@@ -292,17 +288,17 @@ func (hac *HAProxySettings) UpdateBackends(configuration *HAProxyConfiguration) 
 
 	//fmt.Printf("current backends: %+v\n", current_backends)
 
-	for name, service := range configuration.Endpoints {
-		if _, ok := current_backends[name]; ok == false {
-			fmt.Printf("Restart required: missing section %s\n", name)
+	for service_name, backend_servers := range configuration.ServiceBackends {
+		if _, ok := current_backends[service_name]; ok == false {
+			fmt.Printf("Restart required: missing section %s\n", service_name)
 			return true, nil
 		}
-		for backendServer := range service.BackendServers {
-			if _, ok := current_backends[name][name+"-"+backendServer]; ok == false {
-				fmt.Printf("Restart required: missing endpoint %s from section %s\n", name+"-"+backendServer, name)
+		for backendServer := range backend_servers {
+			if _, ok := current_backends[service_name][service_name+"-"+backendServer]; ok == false {
+				fmt.Printf("Restart required: missing endpoint %s from section %s\n", service_name+"-"+backendServer, service_name)
 				return true, nil
 			}
-			enabled_backends[name] = append(enabled_backends[name], name+"-"+backendServer)
+			enabled_backends[service_name] = append(enabled_backends[service_name], service_name+"-"+backendServer)
 		}
 	}
 	fmt.Printf("enabled backends: %+v\n", enabled_backends)

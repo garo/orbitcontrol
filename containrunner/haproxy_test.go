@@ -17,35 +17,48 @@ var _ = Suite(&HAProxySuite{})
 func (s *HAProxySuite) SetUpTest(c *C) {
 }
 
+type ConfigBridgeInterfaceMock struct {
+	Stub func(service_name string) (map[string]string, error)
+}
+
+func (c ConfigBridgeInterfaceMock) GetHAProxyEndpointsForService(service_name string) (map[string]string, error) {
+	return c.Stub(service_name)
+}
+
 func (s *HAProxySuite) TestConvergeHAProxy(c *C) {
 	var settings HAProxySettings
 	settings.HAProxyBinary = "/usr/sbin/haproxy"
 	settings.HAProxyConfigName = "haproxy-test-config.cfg"
 	settings.HAProxyConfigPath = "/tmp"
 
+	moc := ConfigBridgeInterfaceMock{
+		func(service_name string) (map[string]string, error) {
+			endpoints := make(map[string]string)
+			endpoints["10.0.0.1:80"] = "10.0.0.1:80"
+			return endpoints, nil
+		},
+	}
+
 	configuration := NewHAProxyConfiguration()
-	configuration.GlobalSection = `
+	configuration.Template = `
 defaults
 	contimeout 5000
 	clitimeout 60000
 	srvtimeout 60000
-`
 
-	endpoint := NewHAProxyEndpoint()
-	endpoint.Name = "test"
-	endpoint.BackendServers["10.0.0.1:80"] = ""
-	endpoint.Config.ListenAddress = "127.0.0.1:80"
-	endpoint.Config.Listen = `
-mode http
+listen test 127.0.0.1:80
+	mode http
+{{range Endpoints "test"}}
+	server {{.Nickname}} {{.HostPort}}
+{{end}}
 `
-	configuration.Endpoints["test"] = endpoint
 
 	_, err := os.Stat("/tmp/haproxy-test-config.cfg")
 	if err == nil {
 		os.Remove("/tmp/haproxy-test-config.cfg")
 	}
 
-	err = settings.ConvergeHAProxy(configuration, nil)
+	err = settings.ConvergeHAProxy(moc, configuration, nil)
 	c.Assert(err, IsNil)
 
 	var bytes []byte
@@ -61,6 +74,7 @@ defaults
 
 listen test 127.0.0.1:80
 	mode http
+
 	server test-10.0.0.1:80 10.0.0.1:80
 
 `)
@@ -87,22 +101,35 @@ func (s *HAProxySuite) TestReloadHAProxyError(c *C) {
 
 func (s *HAProxySuite) TestGetNewConfig(c *C) {
 	var settings HAProxySettings
-	configuration := NewHAProxyConfiguration()
-	configuration.GlobalSection = "foo\nbar"
 
-	str, err := settings.GetNewConfig(configuration)
+	moc := ConfigBridgeInterfaceMock{
+		func(service_name string) (map[string]string, error) {
+			return nil, nil
+		},
+	}
+
+	configuration := NewHAProxyConfiguration()
+	configuration.Template = "foo\nbar"
+
+	str, err := settings.GetNewConfig(moc, configuration)
 	c.Assert(err, IsNil)
 
-	c.Assert(str, Equals, "foo\nbar\n")
+	c.Assert(str, Equals, "foo\nbar")
 }
 
 func (s *HAProxySuite) TestBuildAndVerifyNewConfigWithErrors(c *C) {
 	var settings HAProxySettings
 	settings.HAProxyBinary = "/usr/sbin/haproxy"
 	configuration := NewHAProxyConfiguration()
-	configuration.GlobalSection = "foo\nbar"
+	configuration.Template = "foo\nbar"
 
-	err := settings.BuildAndVerifyNewConfig(configuration)
+	moc := ConfigBridgeInterfaceMock{
+		func(service_name string) (map[string]string, error) {
+			return nil, nil
+		},
+	}
+
+	err := settings.BuildAndVerifyNewConfig(moc, configuration)
 	c.Assert(err, Not(IsNil))
 }
 
@@ -112,72 +139,21 @@ func (s *HAProxySuite) TestBuildAndVerifyNewConfig(c *C) {
 	settings.HAProxyConfigPath = "/tmp"
 	settings.HAProxyConfigName = "haproxy_config_test.cfg"
 
+	moc := ConfigBridgeInterfaceMock{
+		func(service_name string) (map[string]string, error) {
+			return nil, nil
+		},
+	}
+
 	configuration := NewHAProxyConfiguration()
-	configuration.GlobalSection = `
+	configuration.Template = `
 listen test 127.0.0.1:80
 	mode http
 	backend 127.0.0.1:81
 `
 
-	err := settings.BuildAndVerifyNewConfig(configuration)
+	err := settings.BuildAndVerifyNewConfig(moc, configuration)
 	c.Assert(err, IsNil)
-}
-
-func (s *HAProxySuite) TestGetServicesSectionOneListen(c *C) {
-	var settings HAProxySettings
-	configuration := NewHAProxyConfiguration()
-
-	service := HAProxyEndpoint{}
-	service.Name = "comet"
-	service.Config.PerServer = "check inter 2000 rise 2 fall 2 maxconn 40"
-	service.Config.ListenAddress = "127.0.0.1:89"
-	service.Config.Listen =
-		`mode http
-balance leastconn
-`
-	service.BackendServers = make(map[string]string)
-	service.BackendServers["10.0.0.1:1234"] = ""
-	configuration.Endpoints["comet"] = &service
-
-	str, err := settings.GetServicesSection(configuration)
-
-	c.Assert(err, IsNil)
-	c.Assert(str, Equals,
-		`listen comet 127.0.0.1:89
-	mode http
-	balance leastconn
-	server comet-10.0.0.1:1234 10.0.0.1:1234 check inter 2000 rise 2 fall 2 maxconn 40
-
-`)
-
-}
-
-func (s *HAProxySuite) TestGetServicesSectionOneBackend(c *C) {
-	var settings HAProxySettings
-	configuration := NewHAProxyConfiguration()
-
-	service := HAProxyEndpoint{}
-	service.Name = "comet"
-	service.Config.PerServer = "check inter 2000 rise 2 fall 2 maxconn 40"
-	service.Config.Backend =
-		`mode http
-balance leastconn
-`
-	service.BackendServers = make(map[string]string)
-	service.BackendServers["10.0.0.1:1234"] = ""
-	configuration.Endpoints["comet"] = &service
-
-	str, err := settings.GetServicesSection(configuration)
-
-	c.Assert(err, IsNil)
-	c.Assert(str, Equals,
-		`backend comet
-	mode http
-	balance leastconn
-	server comet-10.0.0.1:1234 10.0.0.1:1234 check inter 2000 rise 2 fall 2 maxconn 40
-
-`)
-
 }
 
 func (s *HAProxySuite) TestUpdateBackendsUpdateRequiredWithNewBackendSection(c *C) {
@@ -187,11 +163,9 @@ func (s *HAProxySuite) TestUpdateBackendsUpdateRequiredWithNewBackendSection(c *
 	settings.HAProxySocket = "/tmp/sock_srv"
 	configuration := NewHAProxyConfiguration()
 
-	service := HAProxyEndpoint{}
-	service.Name = "comet"
-	service.BackendServers = make(map[string]string)
-	service.BackendServers["172.16.2.159:3500"] = ""
-	configuration.Endpoints["comet"] = &service
+	backends := make(map[string]string)
+	backends["172.16.2.159:3500"] = ""
+	configuration.ServiceBackends["comet"] = backends
 
 	ln, err := net.Listen("unix", "/tmp/sock_srv")
 	if err != nil {
@@ -232,11 +206,9 @@ func (s *HAProxySuite) TestUpdateBackendsUpdateRequiredWithNewEndpointInBackend(
 	settings.HAProxySocket = "/tmp/sock_srv"
 	configuration := NewHAProxyConfiguration()
 
-	service := HAProxyEndpoint{}
-	service.Name = "comet"
-	service.BackendServers = make(map[string]string)
-	service.BackendServers["172.16.2.159:3500"] = ""
-	configuration.Endpoints["comet"] = &service
+	backends := make(map[string]string)
+	backends["172.16.2.159:3500"] = ""
+	configuration.ServiceBackends["comet"] = backends
 
 	ln, err := net.Listen("unix", "/tmp/sock_srv")
 	if err != nil {
@@ -279,11 +251,9 @@ func (s *HAProxySuite) TestUpdateBackendsNoUpdateRequiredEverythingMatches(c *C)
 	settings.HAProxySocket = "/tmp/sock_srv"
 	configuration := NewHAProxyConfiguration()
 
-	service := HAProxyEndpoint{}
-	service.Name = "comet"
-	service.BackendServers = make(map[string]string)
-	service.BackendServers["172.16.2.159:3500"] = ""
-	configuration.Endpoints["comet"] = &service
+	backends := make(map[string]string)
+	backends["172.16.2.159:3500"] = ""
+	configuration.ServiceBackends["comet"] = backends
 
 	var commands []string
 
@@ -328,13 +298,11 @@ func (s *HAProxySuite) TestUpdateBackendsNoUpdateRequiredButServerMustBeDisabled
 	var settings HAProxySettings
 	//settings.HAProxySocket = "/var/run/haproxy/admin.sock"
 	settings.HAProxySocket = "/tmp/sock_srv"
-	configuration := NewHAProxyConfiguration()
 
-	service := HAProxyEndpoint{}
-	service.Name = "comet"
-	service.BackendServers = make(map[string]string)
-	service.BackendServers["172.16.2.159:3500"] = ""
-	configuration.Endpoints["comet"] = &service
+	configuration := NewHAProxyConfiguration()
+	backends := make(map[string]string)
+	backends["172.16.2.159:3500"] = ""
+	configuration.ServiceBackends["comet"] = backends
 
 	commands := make(chan string, 5)
 
@@ -384,12 +352,10 @@ func (s *HAProxySuite) TestUpdateBackendsNoUpdateRequiredButServerMustBeEnabled(
 	settings.HAProxySocket = "/tmp/sock_srv"
 	configuration := NewHAProxyConfiguration()
 
-	service := HAProxyEndpoint{}
-	service.Name = "comet"
-	service.BackendServers = make(map[string]string)
-	service.BackendServers["172.16.2.159:3500"] = ""
-	service.BackendServers["172.16.2.160:3500"] = ""
-	configuration.Endpoints["comet"] = &service
+	backends := make(map[string]string)
+	backends["172.16.2.159:3500"] = ""
+	backends["172.16.2.160:3500"] = ""
+	configuration.ServiceBackends["comet"] = backends
 
 	// Channel to get the haproxy status socket commands from our haproxy fake server into the test
 	commands := make(chan string, 5)
@@ -440,11 +406,9 @@ func (s *HAProxySuite) TestUpdateBackendsNoUpdateRequiredButDownServerMustBeDisa
 	settings.HAProxySocket = "/tmp/sock_srv"
 	configuration := NewHAProxyConfiguration()
 
-	service := HAProxyEndpoint{}
-	service.Name = "comet"
-	service.BackendServers = make(map[string]string)
-	service.BackendServers["172.16.2.159:3500"] = ""
-	configuration.Endpoints["comet"] = &service
+	backends := make(map[string]string)
+	backends["172.16.2.159:3500"] = ""
+	configuration.ServiceBackends["comet"] = backends
 
 	// Channel to get the haproxy status socket commands from our haproxy fake server into the test
 	commands := make(chan string, 5)

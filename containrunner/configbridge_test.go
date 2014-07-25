@@ -12,8 +12,10 @@ type ConfigBridgeSuite struct {
 
 var _ = Suite(&ConfigBridgeSuite{})
 
+var TestingEtcdEndpoints []string = []string{"http://etcd:4001"}
+
 func (s *ConfigBridgeSuite) SetUpTest(c *C) {
-	s.etcd = etcd.NewClient([]string{"http://etcd:4001"})
+	s.etcd = etcd.NewClient(TestingEtcdEndpoints)
 	s.etcd.DeleteDir("/test/")
 
 }
@@ -26,13 +28,13 @@ func (s *ConfigBridgeSuite) TestLoadOrbitConfigurationFromFiles(c *C) {
 
 	c.Assert(orbitConfiguration.MachineConfigurations["testtag"].HAProxyConfiguration, Not(IsNil))
 
-	c.Assert(orbitConfiguration.MachineConfigurations["testtag"].HAProxyConfiguration.GlobalSection, Equals,
+	c.Assert(orbitConfiguration.MachineConfigurations["testtag"].HAProxyConfiguration.Template, Equals,
 		"global\n"+
 			"stats socket /var/run/haproxy/admin.sock level admin user haproxy group haproxy\n"+
 			"\tlog 127.0.0.1\tlocal2 info\n"+
 			"\tmaxconn 16000\n"+
 			" \tulimit-n 40000\n"+
-			"\tuser haproxy\t\n"+
+			"\tuser haproxy\n"+
 			"\tgroup haproxy\n"+
 			"\tdaemon\n"+
 			"\tquiet\n"+
@@ -50,12 +52,6 @@ func (s *ConfigBridgeSuite) TestLoadOrbitConfigurationFromFiles(c *C) {
 			"\tclitimeout 60000\n"+
 			"\tsrvtimeout 60000\n"+
 			"\n")
-
-	c.Assert(orbitConfiguration.MachineConfigurations["testtag"].HAProxyConfiguration.Endpoints, Not(IsNil))
-	c.Assert(orbitConfiguration.MachineConfigurations["testtag"].HAProxyConfiguration.Endpoints["comet"], Not(IsNil))
-	c.Assert(orbitConfiguration.MachineConfigurations["testtag"].HAProxyConfiguration.Endpoints["comet"].Name, Equals, "comet")
-	c.Assert(orbitConfiguration.MachineConfigurations["testtag"].HAProxyConfiguration.Endpoints["comet"].Config.PerServer, Equals, "check inter 2000")
-
 	c.Assert(orbitConfiguration.Services["comet"].Name, Equals, "comet")
 	c.Assert(orbitConfiguration.Services["comet"].EndpointPort, Equals, 3500)
 	c.Assert(orbitConfiguration.Services["comet"].Checks[0].Type, Equals, "http")
@@ -74,10 +70,33 @@ func (s *ConfigBridgeSuite) TestUploadOrbitConfigurationToEtcd(c *C) {
 	err = ct.UploadOrbitConfigurationToEtcd(orbitConfiguration, s.etcd)
 	c.Assert(err, IsNil)
 
-	res, err := s.etcd.Get("/test/machineconfigurations/tags/testtag/haproxy_endpoints/comet", true, true)
+	res, err := s.etcd.Get("/test/machineconfigurations/tags/testtag/haproxy_config", true, true)
 	c.Assert(err, IsNil)
 
-	c.Assert(res.Node.Value, Equals, "{\"Name\":\"comet\",\"Config\":{\"PerServer\":\"check inter 2000\",\"ListenAddress\":\"0.0.0.0:80\",\"Listen\":\"mode http\\nbalance leastconn\\nstats uri /haproxy-status66\",\"Backend\":\"\"}}")
+	c.Assert(res.Node.Value, Equals,
+		"global\n"+
+			"stats socket /var/run/haproxy/admin.sock level admin user haproxy group haproxy\n"+
+			"\tlog 127.0.0.1\tlocal2 info\n"+
+			"\tmaxconn 16000\n"+
+			" \tulimit-n 40000\n"+
+			"\tuser haproxy\n"+
+			"\tgroup haproxy\n"+
+			"\tdaemon\n"+
+			"\tquiet\n"+
+			"\tpidfile /var/run/haproxy.pid\n"+
+			"\n"+
+			"defaults\n"+
+			"\tlog\tglobal\n"+
+			"\tmode http\n"+
+			"\toption httplog\n"+
+			"\toption dontlognull\n"+
+			"\tretries 3\n"+
+			"\toption redispatch\n"+
+			"\tmaxconn\t8000\n"+
+			"\tcontimeout 5000\n"+
+			"\tclitimeout 60000\n"+
+			"\tsrvtimeout 60000\n"+
+			"\n")
 
 	res, err = s.etcd.Get("/test/services/comet/config", true, true)
 	c.Assert(err, IsNil)
@@ -138,17 +157,7 @@ func (s *ConfigBridgeSuite) TestGetMachineConfiguration(c *C) {
 		panic(err)
 	}
 
-	scribedEndpoint :=
-		`{
-			"Name":"scribed",
-			"Config" : {
-				"PerServer" : "",
-				"Backend" : "mode http\n"
-			}
-		}
-`
-
-	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/haproxy_endpoints/scribed", scribedEndpoint, 10)
+	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/haproxy_config", "foobar", 10)
 	if err != nil {
 		panic(err)
 	}
@@ -165,9 +174,7 @@ func (s *ConfigBridgeSuite) TestGetMachineConfiguration(c *C) {
 	c.Assert(configuration.Services["comet"].Checks[0].Type, Equals, "http")
 	c.Assert(configuration.Services["comet"].Checks[0].Url, Equals, "http://localhost:3500/check")
 
-	c.Assert(configuration.HAProxyConfiguration.Endpoints["scribed"].Name, Equals, "scribed")
-	c.Assert(configuration.HAProxyConfiguration.Endpoints["scribed"].Config.PerServer, Equals, "")
-	c.Assert(configuration.HAProxyConfiguration.Endpoints["scribed"].Config.Backend, Equals, "mode http\n")
+	c.Assert(configuration.HAProxyConfiguration.Template, Equals, "foobar")
 
 	_, _ = s.etcd.DeleteDir("/machineconfigurations/tags/testtag/")
 
@@ -208,13 +215,7 @@ func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherWithPreviousExistingVal
 
 }
 
-func (s *ConfigBridgeSuite) TestGetHAProxyEndpoints(c *C) {
-	var mc MachineConfiguration
-	mc.HAProxyConfiguration = NewHAProxyConfiguration()
-
-	var endpoint = new(HAProxyEndpoint)
-	mc.HAProxyConfiguration.Endpoints["testService2"] = endpoint
-	endpoint.Name = "testService2"
+func (s *ConfigBridgeSuite) TestGetHAProxyEndpointsForService(c *C) {
 
 	_, err := s.etcd.Set("/test/services/testService2/endpoints/10.1.2.3:1234", "foobar", 10)
 	if err != nil {
@@ -223,10 +224,11 @@ func (s *ConfigBridgeSuite) TestGetHAProxyEndpoints(c *C) {
 
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test"
-	err = containrunner.GetHAProxyEndpoints(s.etcd, &mc)
+	containrunner.EtcdEndpoints = TestingEtcdEndpoints
+	endpoints, err := containrunner.GetHAProxyEndpointsForService("testService2")
 	c.Assert(err, IsNil)
 
-	c.Assert(mc.HAProxyConfiguration.Endpoints["testService2"].BackendServers["10.1.2.3:1234"], Equals, "foobar")
+	c.Assert(endpoints["10.1.2.3:1234"], Equals, "foobar")
 
 }
 

@@ -131,32 +131,12 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 		var mc MachineConfiguration
 		var bytes []byte
 
-		var haproxy_endpoint_files []os.FileInfo
-		haproxy_endpoint_files, err = ioutil.ReadDir(startpath + "/machineconfigurations/tags/" + file.Name() + "/haproxy_endpoints")
+		fname := startpath + "/machineconfigurations/tags/" + file.Name() + "/haproxy.tpl"
+		bytes, err = ioutil.ReadFile(fname)
 		if err == nil {
 			mc.HAProxyConfiguration = NewHAProxyConfiguration()
-			fname := startpath + "/machineconfigurations/tags/" + file.Name() + "/haproxy.json"
-			bytes, err = ioutil.ReadFile(fname)
-			if err == nil {
-				fmt.Fprintf(os.Stderr, "Loading haproxy config for tag %s from file %s\n", file.Name(), fname)
-				err = json.Unmarshal(bytes, mc.HAProxyConfiguration)
-				if err != nil {
-					return nil, errors.New(fmt.Sprintf("Error loading file %s. Error: %+v\n", fname, err))
-				}
-			}
-
-			for _, haproxy_endpoint_file := range haproxy_endpoint_files {
-				fname = startpath + "/machineconfigurations/tags/" + file.Name() + "/haproxy_endpoints/" + haproxy_endpoint_file.Name()
-				bytes, err = ioutil.ReadFile(fname)
-				endpoint := NewHAProxyEndpoint()
-				err = json.Unmarshal(bytes, endpoint)
-				fmt.Fprintf(os.Stderr, "Loading haproxy endpoint %s for tag %s\n", endpoint.Name, file.Name())
-
-				if err != nil {
-					return nil, errors.New(fmt.Sprintf("Error loading file %s. Error: %+v\n", fname, err))
-				}
-				mc.HAProxyConfiguration.Endpoints[endpoint.Name] = endpoint
-			}
+			fmt.Fprintf(os.Stderr, "Loading haproxy config for tag %s from file %s\n", file.Name(), fname)
+			mc.HAProxyConfiguration.Template = string(bytes)
 		}
 
 		oc.MachineConfigurations[file.Name()] = mc
@@ -192,20 +172,9 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 		etcdClient.CreateDir(c.EtcdBasePath+"/machineconfigurations/tags/"+tag, 0)
 
 		if mc.HAProxyConfiguration != nil {
-			bytes, err := json.Marshal(mc.HAProxyConfiguration)
-			_, err = etcdClient.Set(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/haproxy_config", string(bytes), 0)
+			_, err := etcdClient.Set(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/haproxy_config", string(mc.HAProxyConfiguration.Template), 0)
 			if err != nil {
 				return err
-			}
-
-			etcdClient.CreateDir(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/haproxy_endpoints", 0)
-			for name, haproxy_endpoint := range mc.HAProxyConfiguration.Endpoints {
-				bytes, err = json.Marshal(haproxy_endpoint)
-				_, err = etcdClient.Set(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/haproxy_endpoints/"+name, string(bytes), 0)
-				if err != nil {
-					return err
-				}
-
 			}
 		}
 	}
@@ -375,73 +344,42 @@ func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []
 				}
 			}
 
-			if node.Dir == true && strings.HasSuffix(node.Key, "/haproxy_endpoints") {
-				if configuration.HAProxyConfiguration == nil {
-					configuration.HAProxyConfiguration = NewHAProxyConfiguration()
-				}
-
-				for _, haProxyEndpoint := range node.Nodes {
-					if haProxyEndpoint.Dir == false {
-						endpoint := new(HAProxyEndpoint)
-						err = json.Unmarshal([]byte(haProxyEndpoint.Value), &endpoint)
-						if err != nil {
-							panic(err)
-						}
-
-						name := haProxyEndpoint.Key[len(node.Key)+1:]
-						configuration.HAProxyConfiguration.Endpoints[name] = endpoint
-					}
-				}
-			}
-
 			if node.Dir == false && strings.HasSuffix(node.Key, "/haproxy_config") {
 				if configuration.HAProxyConfiguration == nil {
 					configuration.HAProxyConfiguration = NewHAProxyConfiguration()
 				}
 
-				err = json.Unmarshal([]byte(node.Value), configuration.HAProxyConfiguration)
-				if err != nil {
-					panic(err)
-				}
+				configuration.HAProxyConfiguration.Template = node.Value
 			}
 
 		}
 	}
-
-	c.GetHAProxyEndpoints(etcd, &configuration)
 
 	return configuration, nil
 }
 
-func (c *Containrunner) GetHAProxyEndpoints(etcd *etcd.Client, mc *MachineConfiguration) error {
-	if mc.HAProxyConfiguration == nil {
-		return nil
+func (c Containrunner) GetHAProxyEndpointsForService(service_name string) (map[string]string, error) {
+	etcdClient := GetEtcdClient(c.EtcdEndpoints)
+
+	res, err := etcdClient.Get(c.EtcdBasePath+"/services/"+service_name+"/endpoints", true, true)
+	if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
+		panic(err)
 	}
 
-	for serviceName, haProxyEndpoint := range mc.HAProxyConfiguration.Endpoints {
+	if err != nil {
+		return nil, nil
+	}
 
-		res, err := etcd.Get(c.EtcdBasePath+"/services/"+serviceName+"/endpoints", true, true)
-		if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
-			panic(err)
-		}
+	backendServers := make(map[string]string)
 
-		if err != nil {
-			continue
-		}
-
-		if haProxyEndpoint.BackendServers == nil {
-			haProxyEndpoint.BackendServers = make(map[string]string)
-		}
-
-		for _, endpoint := range res.Node.Nodes {
-			if endpoint.Dir == false {
-				name := endpoint.Key[len(res.Node.Key)+1:]
-				haProxyEndpoint.BackendServers[name] = endpoint.Value
-			}
+	for _, endpoint := range res.Node.Nodes {
+		if endpoint.Dir == false {
+			name := endpoint.Key[len(res.Node.Key)+1:]
+			backendServers[name] = endpoint.Value
 		}
 	}
 
-	return nil
+	return backendServers, nil
 }
 
 func (c *Containrunner) ReadServiceFromFile(filename string) (ServiceConfiguration, error) {
