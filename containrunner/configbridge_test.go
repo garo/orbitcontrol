@@ -1,6 +1,7 @@
 package containrunner
 
 import (
+	"encoding/json"
 	"github.com/coreos/go-etcd/etcd"
 	. "gopkg.in/check.v1"
 )
@@ -118,7 +119,7 @@ Content-Type: text/html
 	res, err = s.etcd.Get("/test/services/comet/config", true, true)
 	c.Assert(err, IsNil)
 
-	c.Assert(res.Node.Value, Equals, "{\"Name\":\"comet\",\"EndpointPort\":3500,\"Checks\":[{\"Type\":\"http\",\"Url\":\"http://127.0.0.1:3500/check\",\"HostPort\":\"\",\"DummyResult\":false,\"ExpectHttpStatus\":\"\",\"ExpectString\":\"\"}],\"Container\":{\"HostConfig\":{\"Binds\":[\"/tmp:/data\"],\"ContainerIDFile\":\"\",\"LxcConf\":null,\"Privileged\":false,\"PortBindings\":null,\"Links\":null,\"PublishAllPorts\":false,\"Dns\":null,\"DnsSearch\":null,\"VolumesFrom\":null,\"NetworkMode\":\"host\"},\"Config\":{\"Hostname\":\"\",\"Domainname\":\"\",\"User\":\"\",\"Memory\":0,\"MemorySwap\":0,\"CpuShares\":0,\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"PortSpecs\":null,\"ExposedPorts\":null,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"NODE_ENV=production\"],\"Cmd\":null,\"Dns\":null,\"Image\":\"registry.applifier.info:5000/comet:8fd079b54719d61b6feafbb8056b9ba09ade4760\",\"Volumes\":null,\"VolumesFrom\":\"\",\"WorkingDir\":\"\",\"Entrypoint\":null,\"NetworkDisabled\":false}}}")
+	c.Assert(res.Node.Value, Equals, "{\"Name\":\"comet\",\"EndpointPort\":3500,\"Checks\":[{\"Type\":\"http\",\"Url\":\"http://127.0.0.1:3500/check\",\"HostPort\":\"\",\"DummyResult\":false,\"ExpectHttpStatus\":\"\",\"ExpectString\":\"\"}],\"Container\":{\"HostConfig\":{\"Binds\":[\"/tmp:/data\"],\"ContainerIDFile\":\"\",\"LxcConf\":null,\"Privileged\":false,\"PortBindings\":null,\"Links\":null,\"PublishAllPorts\":false,\"Dns\":null,\"DnsSearch\":null,\"VolumesFrom\":null,\"NetworkMode\":\"host\"},\"Config\":{\"Hostname\":\"\",\"Domainname\":\"\",\"User\":\"\",\"Memory\":0,\"MemorySwap\":0,\"CpuShares\":0,\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"PortSpecs\":null,\"ExposedPorts\":null,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"NODE_ENV=production\"],\"Cmd\":null,\"Dns\":null,\"Image\":\"registry.applifier.info:5000/comet:8fd079b54719d61b6feafbb8056b9ba09ade4760\",\"Volumes\":null,\"VolumesFrom\":\"\",\"WorkingDir\":\"\",\"Entrypoint\":null,\"NetworkDisabled\":false}},\"Revision\":null}")
 
 }
 
@@ -156,7 +157,10 @@ func (s *ConfigBridgeSuite) TestGetMachineConfiguration(c *C) {
 			"type" : "http",
 			"url" : "http://localhost:3500/check"
 		}
-	]
+	],
+	"Revision" : {
+		"Revision" : "asdf"
+	}
 }
 `
 	_, err = s.etcd.Set("/services/comet/config", comet, 10)
@@ -192,6 +196,8 @@ func (s *ConfigBridgeSuite) TestGetMachineConfiguration(c *C) {
 	c.Assert(configuration.Services["comet"].Checks[0].Url, Equals, "http://localhost:3500/check")
 
 	c.Assert(configuration.HAProxyConfiguration.Template, Equals, "foobar")
+
+	c.Assert(configuration.Services["comet"].Revision.Revision, Equals, "asdf")
 
 	_, _ = s.etcd.DeleteDir("/machineconfigurations/tags/testtag/")
 
@@ -286,5 +292,50 @@ func (s *ConfigBridgeSuite) TestTagServiceToTag(c *C) {
 	c.Assert(res.Node.Value, Equals, "{}")
 
 	_, _ = s.etcd.Delete("/test/machineconfigurations/tags/testtag/services/myservice", true)
+
+}
+
+func (s *ConfigBridgeSuite) TestGetServiceRevision(c *C) {
+
+	s.etcd.Delete("/test/services/myservice/revision", true)
+	s.etcd.Set("/test/services/myservice/revision", `
+{
+	"Revision" : "asdfasdf"
+}`, 10)
+
+	var containrunner Containrunner
+	containrunner.EtcdBasePath = "/test"
+	serviceRevision, err := containrunner.GetServiceRevision("myservice", s.etcd)
+	c.Assert(err, IsNil)
+	c.Assert(serviceRevision.Revision, Equals, "asdfasdf")
+
+	s.etcd.Delete("/test/services/myservice/revision", true)
+
+}
+
+func (s *ConfigBridgeSuite) TestSetServiceRevision(c *C) {
+
+	s.etcd.Delete("/test/services/myservice/revision", true)
+
+	var containrunner Containrunner
+	containrunner.EtcdBasePath = "/test"
+
+	serviceRevision := ServiceRevision{"asdf"}
+	var serviceRevision2 ServiceRevision
+
+	err := containrunner.SetServiceRevision("myservice", serviceRevision, s.etcd)
+	c.Assert(err, IsNil)
+
+	res, err := s.etcd.Get("/test/services/myservice/revision", false, false)
+	if err != nil {
+		panic(err)
+	}
+
+	err = json.Unmarshal([]byte(res.Node.Value), &serviceRevision2)
+	c.Assert(err, IsNil)
+
+	c.Assert(serviceRevision2.Revision, Equals, "asdf")
+
+	s.etcd.Delete("/test/services/myservice/revision", true)
 
 }

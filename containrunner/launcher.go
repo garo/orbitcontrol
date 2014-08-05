@@ -48,13 +48,29 @@ func GetDockerClient() *docker.Client {
 }
 
 func FindMatchingContainers(existing_containers []ContainerDetails, required_service ServiceConfiguration) (found_containers []ContainerDetails, remaining_containers []ContainerDetails) {
+	var imageRegexp = regexp.MustCompile("(.+):")
 
 	for _, container_details := range existing_containers {
 		found := true
-		if container_details.Container.Config.Image != required_service.Container.Config.Image {
-			remaining_containers = append(remaining_containers, container_details)
-			continue
+
+		// Support the Revision code path where the revision overrides the image (which contains both container and revision tag)
+		// set in the static Container.Config.Image
+		if required_service.Revision != nil {
+			m := imageRegexp.FindStringSubmatch(required_service.Container.Config.Image)
+			image := m[1] + ":" + required_service.Revision.Revision
+
+			if container_details.Container.Config.Image != image {
+				remaining_containers = append(remaining_containers, container_details)
+				continue
+			}
+
+		} else {
+			if container_details.Container.Config.Image != required_service.Container.Config.Image {
+				remaining_containers = append(remaining_containers, container_details)
+				continue
+			}
 		}
+
 		if required_service.Container.Config.Hostname != "" && container_details.Container.Config.Hostname != required_service.Container.Config.Hostname {
 			remaining_containers = append(remaining_containers, container_details)
 			continue

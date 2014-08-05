@@ -1,10 +1,14 @@
 package containrunner
 
-import "github.com/coreos/go-etcd/etcd"
-import "time"
-import "github.com/op/go-logging"
-import "strings"
-import "reflect"
+import (
+	"encoding/json"
+	"fmt"
+	"github.com/coreos/go-etcd/etcd"
+	"github.com/op/go-logging"
+	"os"
+	"strings"
+	"time"
+)
 
 var log = logging.MustGetLogger("containrunner")
 
@@ -28,6 +32,8 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 	checkEngine.Start(4, &ConfigResultEtcdPublisher{10, containrunner.EtcdBasePath, containrunner.EtcdEndpoints, nil}, containrunner.MachineAddress, containrunner.CheckIntervalInMs)
 
 	var machineConfiguration MachineConfiguration
+	var newMachineConfiguration MachineConfiguration
+	var err error
 
 	quit := false
 	var lastConverge time.Time
@@ -43,7 +49,7 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 				exitChannel <- true
 			}
 		default:
-			newMachineConfiguration, err := containrunner.GetMachineConfigurationByTags(etcdClient, containrunner.Tags)
+			newMachineConfiguration, err = containrunner.GetMachineConfigurationByTags(etcdClient, containrunner.Tags)
 			if err != nil {
 				if strings.HasPrefix(err.Error(), "100:") {
 					log.Info(LogString("Error:" + err.Error()))
@@ -56,8 +62,17 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 					panic(err)
 				}
 			}
-			if !reflect.DeepEqual(machineConfiguration, newMachineConfiguration) {
+			if !DeepEqual(machineConfiguration, newMachineConfiguration) {
+
+				log.Info(LogString("Checking DeepEqual of the Containers"))
+				DeepEqual(machineConfiguration.Services["comet"].Container, newMachineConfiguration.Services["comet"].Container)
+
 				log.Info(LogString("MainExecutionLoop got new configuration"))
+
+				bytes, _ := json.MarshalIndent(machineConfiguration, "", "    ")
+				fmt.Fprintf(os.Stderr, "Old configuration: %s\n", string(bytes))
+				bytes, _ = json.MarshalIndent(machineConfiguration, "", "    ")
+				fmt.Fprintf(os.Stderr, "New configuration: %s\n", string(bytes))
 
 				go func(containrunner *Containrunner, machineConfiguration MachineConfiguration, oldMachineConfiguration MachineConfiguration) {
 					containrunner.HAProxySettings.ConvergeHAProxy(containrunner, machineConfiguration.HAProxyConfiguration, oldMachineConfiguration.HAProxyConfiguration)

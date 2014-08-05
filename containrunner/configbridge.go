@@ -15,9 +15,10 @@ import (
 	Data model referred
 	/orbit/env <-- file contents tells the environment
 	/orbit/services/<name>/config
+	/orbit/services/<name>/revision	// contains revision string inside which overwrites the set revision in /config
 	/orbit/services/<name>/endpoints/<endpoint host:port>
 	/orbit/machineconfigurations/tags/<tag>/authoritative_names
-	/orbit/machineconfigurations/tags/<tag>/services/<service_name>
+	/orbit/machineconfigurations/tags/<tag>/services/<service_name>				// Tags service to a tag
 	/orbit/machineconfigurations/tags/<tag>/haproxy_endpoints/<service_name>
 
 	Example:
@@ -53,6 +54,11 @@ type ServiceConfiguration struct {
 	EndpointPort int
 	Checks       []ServiceCheck
 	Container    *ContainerConfiguration
+	Revision     *ServiceRevision
+}
+
+type ServiceRevision struct {
+	Revision string
 }
 
 type ConfigResultPublisher interface {
@@ -244,7 +250,7 @@ func (c *Containrunner) GetAllServices(etcdClient *etcd.Client) (map[string]Serv
 
 	for _, node := range res.Node.Nodes {
 		if node.Dir == true {
-			name := node.Key[len(res.Node.Key)+1:]
+			name := string(node.Key[len(res.Node.Key)+1:])
 			service, err = c.GetServiceByName(name, etcdClient)
 			if err != nil {
 				panic(err)
@@ -331,7 +337,7 @@ func (c *Containrunner) GetKnownTags() ([]string, error) {
 
 	for _, node := range res.Node.Nodes {
 		if node.Dir == true {
-			name := node.Key[len(res.Node.Key)+1:]
+			name := string(node.Key[len(res.Node.Key)+1:])
 			tags = append(tags, name)
 		}
 	}
@@ -365,7 +371,7 @@ func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []
 
 				for _, service := range node.Nodes {
 					if service.Dir == false {
-						name := service.Key[len(node.Key)+1:]
+						name := string(service.Key[len(node.Key)+1:])
 						service, err := c.GetServiceByName(name, etcd)
 						if err != nil {
 							return configuration, err
@@ -405,7 +411,7 @@ func (c Containrunner) GetHAProxyEndpointsForService(service_name string) (map[s
 
 	for _, endpoint := range res.Node.Nodes {
 		if endpoint.Dir == false {
-			name := endpoint.Key[len(res.Node.Key)+1:]
+			name := string(endpoint.Key[len(res.Node.Key)+1:])
 			backendServers[name] = endpoint.Value
 		}
 	}
@@ -436,4 +442,32 @@ func (c *Containrunner) ReadServiceFromFile(filename string) (ServiceConfigurati
 	}
 
 	return serviceConfiguration, nil
+}
+
+func (c Containrunner) GetServiceRevision(service_name string, etcd *etcd.Client) (*ServiceRevision, error) {
+
+	res, err := etcd.Get(c.EtcdBasePath+"/services/"+service_name+"/revision", true, true)
+	if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
+		panic(err)
+	}
+
+	serviceRevision := new(ServiceRevision)
+
+	err = json.Unmarshal([]byte(res.Node.Value), serviceRevision)
+	if err != nil {
+		return nil, err
+	}
+
+	return serviceRevision, nil
+}
+
+func (c Containrunner) SetServiceRevision(service_name string, serviceRevision ServiceRevision, etcd *etcd.Client) error {
+
+	bytes, err := json.Marshal(serviceRevision)
+	_, err = etcd.Set(c.EtcdBasePath+"/services/"+service_name+"/revision", string(bytes), 0)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

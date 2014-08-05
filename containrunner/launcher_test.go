@@ -132,3 +132,80 @@ func (s *MySuite) TestConvergeContainers(c *C) {
 
 	ConvergeContainers(conf, s.client)
 }
+
+func (s *MySuite) TestFindMatchingContainers_AllMatch(c *C) {
+	var ec = make([]ContainerDetails, 1, 1)
+	ec[0].Container = new(docker.Container)
+	ec[0].Container.Config = new(docker.Config)
+	ec[0].Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	ec[0].Container.Config.Hostname = "foo.bar.com"
+	ec[0].Container.Name = "the-name"
+
+	var required_service ServiceConfiguration
+	required_service.Container = new(ContainerConfiguration)
+	required_service.Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	required_service.Container.Config.Hostname = "foo.bar.com"
+	required_service.Name = "the-name"
+
+	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
+
+	c.Assert(len(found_containers), Equals, 1)
+	c.Assert(len(remaining_containers), Equals, 0)
+}
+
+func (s *MySuite) TestFindMatchingContaineres_Hostname_Mismatch(c *C) {
+	var ec = make([]ContainerDetails, 1, 1)
+	ec[0].Container = new(docker.Container)
+	ec[0].Container.Config = new(docker.Config)
+	ec[0].Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	ec[0].Container.Config.Hostname = "foo.bar.com"
+	ec[0].Container.Name = "the-name"
+
+	var required_service ServiceConfiguration
+	required_service.Container = new(ContainerConfiguration)
+	required_service.Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	required_service.Container.Config.Hostname = "foo.bar.com1"
+	required_service.Name = "the-name"
+
+	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
+
+	c.Assert(len(found_containers), Equals, 0)
+	c.Assert(len(remaining_containers), Equals, 1)
+}
+
+func (s *MySuite) TestFindMatchingContaineres_Name_Mismatch(c *C) {
+	var ec = make([]ContainerDetails, 1, 1)
+	ec[0].Container = new(docker.Container)
+	ec[0].Container.Config = new(docker.Config)
+	ec[0].Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	ec[0].Container.Config.Hostname = "foo.bar.com"
+	ec[0].Container.Name = "the-name"
+
+	var required_service ServiceConfiguration
+	required_service.Container = new(ContainerConfiguration)
+	required_service.Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	required_service.Container.Config.Hostname = "foo.bar.com"
+	required_service.Name = "the-name1"
+
+	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
+
+	c.Assert(len(found_containers), Equals, 0)
+	c.Assert(len(remaining_containers), Equals, 1)
+}
+
+func (s *MySuite) TestFindMatchingContaineres_Revision_Mismatch(c *C) {
+	var ec = make([]ContainerDetails, 1, 1)
+	ec[0].Container = new(docker.Container)
+	ec[0].Container.Config = new(docker.Config)
+	ec[0].Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+
+	var required_service ServiceConfiguration
+	required_service.Container = new(ContainerConfiguration)
+	required_service.Revision = new(ServiceRevision)
+	required_service.Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	required_service.Revision.Revision = "asdfasdfasdf"
+	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
+
+	c.Assert(len(found_containers), Equals, 0)
+	c.Assert(len(remaining_containers), Equals, 1)
+}

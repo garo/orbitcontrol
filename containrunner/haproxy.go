@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"sort"
 	"strings"
 	"text/template"
 	"time"
@@ -35,13 +36,21 @@ type HAProxyConfiguration struct {
 	Files map[string]string
 
 	// First string is service name, second string is backend host:port
-	ServiceBackends map[string]map[string]string `json:"-"`
+	ServiceBackends map[string]map[string]string `json:"-" DeepEqual:"skip"`
 }
 
 type BackendParameters struct {
 	Nickname string
 	HostPort string
 }
+
+type BackendParametersByNickname []BackendParameters
+
+func (a BackendParametersByNickname) Len() int { return len(a) }
+func (a BackendParametersByNickname) Swap(i, j int) {
+	a[i].Nickname, a[j].Nickname = a[j].Nickname, a[i].Nickname
+}
+func (a BackendParametersByNickname) Less(i, j int) bool { return a[i].Nickname < a[j].Nickname }
 
 type HAProxyEndpoint struct {
 	Name           string
@@ -193,7 +202,7 @@ func (hac *HAProxySettings) BuildAndVerifyNewConfig(cbi ConfigBridgeInterface, c
 		l.OldConfigBackupFile = ""
 	}
 
-	log.Debug(LogEvent(l))
+	//log.Debug(LogEvent(l))
 
 	err = ioutil.WriteFile(hac.HAProxyConfigPath+"/"+hac.HAProxyConfigName, []byte(config), 0664)
 	if err != nil {
@@ -229,13 +238,15 @@ func (hac *HAProxySettings) GetNewConfig(cbi ConfigBridgeInterface, configuratio
 				})
 			}
 
+			sort.Sort(BackendParametersByNickname(backends))
+
 			return backends, nil
 		},
 	}
 
 	tmpl, err := template.New("main").Funcs(funcMap).Parse(configuration.Template)
 	if err != nil {
-		log.Fatalf("parsing: %s", err)
+		log.Error("parsing: %s", err)
 		return "", err
 	}
 
@@ -243,7 +254,7 @@ func (hac *HAProxySettings) GetNewConfig(cbi ConfigBridgeInterface, configuratio
 	// Run the template to verify the output.
 	err = tmpl.Execute(output, "the go programming language")
 	if err != nil {
-		log.Fatalf("execution: %s", err)
+		log.Error("execution: %s", err)
 		return "", err
 	}
 
@@ -317,7 +328,7 @@ func (hac *HAProxySettings) UpdateBackends(configuration *HAProxyConfiguration) 
 			enabled_backends[service_name] = append(enabled_backends[service_name], service_name+"-"+backendServer)
 		}
 	}
-	fmt.Printf("enabled backends: %+v\n", enabled_backends)
+	//fmt.Printf("enabled backends: %+v\n", enabled_backends)
 
 	for section_name, section_backends := range current_backends {
 		for backend, backend_status := range section_backends {
