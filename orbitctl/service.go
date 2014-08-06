@@ -102,7 +102,7 @@ func runService(args []string) (exit int) {
 				}
 
 				if len(deployable_commits) > 0 {
-					fmt.Printf("You can deploy the newest commit with this command: \x1b[1morbitctl service %s set revision %s\x1b[0m\n\n", name, *deployable_commits[len(deployable_commits)-1].SHA)
+					fmt.Printf("\nYou can deploy the newest commit with this command: \x1b[1morbitctl service %s set revision %s\x1b[0m\n\n", name, *deployable_commits[len(deployable_commits)-1].SHA)
 				}
 			}
 		}
@@ -175,7 +175,7 @@ func runService(args []string) (exit int) {
 		for true {
 			time.Sleep(time.Second * 1)
 			old, updated, _ := CheckDeploymentProgress(name, revision)
-			fmt.Printf("Servers with old revision: %d, servers with new revision: %d\r", len(old), len(updated))
+			fmt.Printf("Servers with old revision: %d, servers with new revision: %d... \r", len(old), len(updated))
 			if len(old) == 0 && len(updated) > 0 {
 				break
 			}
