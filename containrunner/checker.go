@@ -18,15 +18,17 @@ type ServiceCheck struct {
 }
 
 type CheckResult struct {
-	ServiceName string
-	Endpoint    string
-	Ok          bool
+	ServiceName  string
+	Endpoint     string
+	Ok           bool
+	EndpointInfo *EndpointInfo
 }
 
 type ServiceChecks struct {
 	ServiceName  string
 	EndpointPort int
 	Checks       []ServiceCheck
+	EndpointInfo *EndpointInfo
 }
 
 type CheckEngine struct {
@@ -81,6 +83,11 @@ func CheckIntervalWorker(configurations <-chan MachineConfiguration, jobsChannel
 					cc.ServiceName = name
 					cc.EndpointPort = service.EndpointPort
 					cc.Checks = service.Checks
+					if service.Container != nil {
+						cc.EndpointInfo = &EndpointInfo{
+							Revision: service.GetRevision(),
+						}
+					}
 					//fmt.Printf("Pushing check %+v\n", cc)
 					jobsChannel <- cc
 				}
@@ -98,7 +105,7 @@ func GetEndpointForContainer(service ServiceConfiguration) string {
 
 func PublishCheckResultWorker(results chan CheckResult, configResultPublisher ConfigResultPublisher) {
 	for result := range results {
-		configResultPublisher.PublishServiceState(result.ServiceName, result.Endpoint, result.Ok)
+		configResultPublisher.PublishServiceState(result.ServiceName, result.Endpoint, result.Ok, result.EndpointInfo)
 	}
 }
 
@@ -108,6 +115,7 @@ func IndividualCheckWorker(id int, jobs <-chan ServiceChecks, results chan<- Che
 		result.ServiceName = j.ServiceName
 		result.Endpoint = fmt.Sprintf("%s:%d", endpointAddress, j.EndpointPort)
 		result.Ok = CheckService(j.Checks)
+		result.EndpointInfo = j.EndpointInfo
 		results <- result
 	}
 }

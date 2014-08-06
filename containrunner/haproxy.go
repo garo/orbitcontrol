@@ -16,7 +16,7 @@ import (
 )
 
 type ConfigBridgeInterface interface {
-	GetHAProxyEndpointsForService(service_name string) (map[string]string, error)
+	GetHAProxyEndpointsForService(service_name string) (map[string]*EndpointInfo, error)
 }
 
 // Static HAProxy settings
@@ -36,7 +36,7 @@ type HAProxyConfiguration struct {
 	Files map[string]string
 
 	// First string is service name, second string is backend host:port
-	ServiceBackends map[string]map[string]string `json:"-" DeepEqual:"skip"`
+	ServiceBackends map[string]map[string]*EndpointInfo `json:"-" DeepEqual:"skip"`
 }
 
 type BackendParameters struct {
@@ -72,7 +72,7 @@ type HAProxyConfigChangeLog struct {
 func NewHAProxyConfiguration() *HAProxyConfiguration {
 	configuration := new(HAProxyConfiguration)
 	configuration.Files = make(map[string]string)
-	configuration.ServiceBackends = make(map[string]map[string]string)
+	configuration.ServiceBackends = make(map[string]map[string]*EndpointInfo)
 
 	return configuration
 }
@@ -112,6 +112,7 @@ func (hac *HAProxySettings) ConvergeHAProxy(cbi ConfigBridgeInterface, configura
 
 	if reload_required {
 		err = hac.ReloadHAProxy()
+
 	}
 
 	return err
@@ -149,8 +150,6 @@ func (hac *HAProxySettings) BuildAndVerifyNewConfig(cbi ConfigBridgeInterface, c
 	if err != nil {
 		return err
 	}
-
-	//fmt.Println(config)
 
 	new_config.WriteString(config)
 	new_config.Close()
@@ -221,12 +220,12 @@ func (hac *HAProxySettings) GetNewConfig(cbi ConfigBridgeInterface, configuratio
 			backend_servers, ok := configuration.ServiceBackends[service_name]
 			var err error
 			if ok == false {
-
 				backend_servers, err = cbi.GetHAProxyEndpointsForService(service_name)
 
 				if err != nil {
 					return nil, err
 				}
+
 				configuration.ServiceBackends[service_name] = backend_servers
 			}
 

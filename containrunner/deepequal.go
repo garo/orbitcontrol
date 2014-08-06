@@ -106,6 +106,7 @@ func deepValueEqual(v1, v2 reflect.Value, visited map[visit]bool, depth int) boo
 		return deepValueEqual(v1.Elem(), v2.Elem(), visited, depth+1)
 	case reflect.Ptr:
 		return deepValueEqual(v1.Elem(), v2.Elem(), visited, depth+1)
+
 	case reflect.Struct:
 		for i, n := 0, v1.NumField(); i < n; i++ {
 			if v1.Type().Field(i).Tag.Get("DeepEqual") == "skip" {
@@ -164,7 +165,7 @@ func deepValueEqual(v1, v2 reflect.Value, visited map[visit]bool, depth int) boo
 		}
 
 		return true
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		if v1.Uint() != v2.Uint() {
 			//fmt.Println("deepValueEqual: Uint failure")
 			return false

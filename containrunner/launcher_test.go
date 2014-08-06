@@ -209,3 +209,27 @@ func (s *MySuite) TestFindMatchingContaineres_Revision_Mismatch(c *C) {
 	c.Assert(len(found_containers), Equals, 0)
 	c.Assert(len(remaining_containers), Equals, 1)
 }
+
+func (s *MySuite) TestGetContainerImageNameWithRevision(c *C) {
+	var required_service ServiceConfiguration
+	required_service.Container = new(ContainerConfiguration)
+	required_service.Revision = new(ServiceRevision)
+	required_service.Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	required_service.Revision.Revision = "asdfasdfasdf"
+	revision := GetContainerImageNameWithRevision(required_service, "")
+
+	c.Assert(revision, Equals, "registry.applifier.info:5000/comet:asdfasdfasdf")
+
+	required_service.Revision.Revision = ""
+	revision = GetContainerImageNameWithRevision(required_service, "")
+	c.Assert(revision, Equals, "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2")
+
+	required_service.Revision.Revision = "asdf"
+	revision = GetContainerImageNameWithRevision(required_service, "foobar")
+	c.Assert(revision, Equals, "registry.applifier.info:5000/comet:foobar")
+
+	required_service.Revision = nil
+	revision = GetContainerImageNameWithRevision(required_service, "")
+	c.Assert(revision, Equals, "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2")
+
+}

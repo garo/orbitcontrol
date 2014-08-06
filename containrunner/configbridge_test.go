@@ -119,7 +119,7 @@ Content-Type: text/html
 	res, err = s.etcd.Get("/test/services/comet/config", true, true)
 	c.Assert(err, IsNil)
 
-	c.Assert(res.Node.Value, Equals, "{\"Name\":\"comet\",\"EndpointPort\":3500,\"Checks\":[{\"Type\":\"http\",\"Url\":\"http://127.0.0.1:3500/check\",\"HostPort\":\"\",\"DummyResult\":false,\"ExpectHttpStatus\":\"\",\"ExpectString\":\"\"}],\"Container\":{\"HostConfig\":{\"Binds\":[\"/tmp:/data\"],\"ContainerIDFile\":\"\",\"LxcConf\":null,\"Privileged\":false,\"PortBindings\":null,\"Links\":null,\"PublishAllPorts\":false,\"Dns\":null,\"DnsSearch\":null,\"VolumesFrom\":null,\"NetworkMode\":\"host\"},\"Config\":{\"Hostname\":\"\",\"Domainname\":\"\",\"User\":\"\",\"Memory\":0,\"MemorySwap\":0,\"CpuShares\":0,\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"PortSpecs\":null,\"ExposedPorts\":null,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"NODE_ENV=production\"],\"Cmd\":null,\"Dns\":null,\"Image\":\"registry.applifier.info:5000/comet:8fd079b54719d61b6feafbb8056b9ba09ade4760\",\"Volumes\":null,\"VolumesFrom\":\"\",\"WorkingDir\":\"\",\"Entrypoint\":null,\"NetworkDisabled\":false}},\"Revision\":null}")
+	c.Assert(res.Node.Value, Equals, "{\"Name\":\"comet\",\"EndpointPort\":3500,\"Checks\":[{\"Type\":\"http\",\"Url\":\"http://127.0.0.1:3500/check\",\"HostPort\":\"\",\"DummyResult\":false,\"ExpectHttpStatus\":\"\",\"ExpectString\":\"\"}],\"Container\":{\"HostConfig\":{\"Binds\":[\"/tmp:/data\"],\"ContainerIDFile\":\"\",\"LxcConf\":null,\"Privileged\":false,\"PortBindings\":null,\"Links\":null,\"PublishAllPorts\":false,\"Dns\":null,\"DnsSearch\":null,\"VolumesFrom\":null,\"NetworkMode\":\"host\"},\"Config\":{\"Hostname\":\"\",\"Domainname\":\"\",\"User\":\"\",\"Memory\":0,\"MemorySwap\":0,\"CpuShares\":0,\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"PortSpecs\":null,\"ExposedPorts\":null,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"NODE_ENV=production\"],\"Cmd\":null,\"Dns\":null,\"Image\":\"registry.applifier.info:5000/comet:8fd079b54719d61b6feafbb8056b9ba09ade4760\",\"Volumes\":null,\"VolumesFrom\":\"\",\"WorkingDir\":\"\",\"Entrypoint\":null,\"NetworkDisabled\":false}},\"Revision\":null,\"SourceControl\":{\"Origin\":\"github.com/Applifier/comet\",\"OAuthToken\":\"\",\"CIUrl\":\"\"}}")
 
 }
 
@@ -157,13 +157,20 @@ func (s *ConfigBridgeSuite) TestGetMachineConfiguration(c *C) {
 			"type" : "http",
 			"url" : "http://localhost:3500/check"
 		}
-	],
-	"Revision" : {
-		"Revision" : "asdf"
-	}
+	]
 }
 `
 	_, err = s.etcd.Set("/services/comet/config", comet, 10)
+	if err != nil {
+		panic(err)
+	}
+
+	revision := `
+{
+	"Revision" : "asdf"
+}`
+
+	_, err = s.etcd.Set("/services/comet/revision", revision, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -206,13 +213,32 @@ func (s *ConfigBridgeSuite) TestGetMachineConfiguration(c *C) {
 func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherServiceOk(c *C) {
 
 	crep := ConfigResultEtcdPublisher{5, "/test", nil, s.etcd}
-	crep.PublishServiceState("testService", "10.1.2.3:1234", true)
+	crep.PublishServiceState("testService", "10.1.2.3:1234", true, nil)
 
 	res, err := s.etcd.Get("/test/services/testService/endpoints/10.1.2.3:1234", false, false)
 	if err != nil {
 		panic(err)
 	}
-	c.Assert(res.Node.Value, Equals, "{}")
+	c.Assert(res.Node.Value, Equals, "null")
+
+	// Note that TTL counts down to zero, so if the machine is under heavy load then the TTL might not be anymore 5
+	c.Assert(res.Node.TTL, Equals, int64(5))
+
+	_, _ = s.etcd.DeleteDir("/test/services/testService/endpoints/10.1.2.3:1234")
+}
+
+func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherServiceWithEndpointInfo(c *C) {
+
+	crep := ConfigResultEtcdPublisher{5, "/test", nil, s.etcd}
+	crep.PublishServiceState("testService", "10.1.2.3:1234", true, &EndpointInfo{
+		Revision: "asdf",
+	})
+
+	res, err := s.etcd.Get("/test/services/testService/endpoints/10.1.2.3:1234", false, false)
+	if err != nil {
+		panic(err)
+	}
+	c.Assert(res.Node.Value, Equals, "{\"Revision\":\"asdf\"}")
 
 	// Note that TTL counts down to zero, so if the machine is under heavy load then the TTL might not be anymore 5
 	c.Assert(res.Node.TTL, Equals, int64(5))
@@ -223,7 +249,7 @@ func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherServiceOk(c *C) {
 func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherServiceNotOk(c *C) {
 
 	crep := ConfigResultEtcdPublisher{5, "/test", nil, s.etcd}
-	crep.PublishServiceState("testService", "10.1.2.3:1234", false)
+	crep.PublishServiceState("testService", "10.1.2.3:1234", false, nil)
 
 	_, err := s.etcd.Get("/test/services/testService/endpoints/10.1.2.3:1234", false, false)
 	c.Assert(err, Not(IsNil))
@@ -232,15 +258,15 @@ func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherServiceNotOk(c *C) {
 func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherWithPreviousExistingValue(c *C) {
 
 	crep := ConfigResultEtcdPublisher{5, "/test", nil, s.etcd}
-	crep.PublishServiceState("testService", "10.1.2.3:1234", true)
-	crep.PublishServiceState("testService", "10.1.2.3:1234", true)
+	crep.PublishServiceState("testService", "10.1.2.3:1234", true, nil)
+	crep.PublishServiceState("testService", "10.1.2.3:1234", true, nil)
 	_, _ = s.etcd.DeleteDir("/test/services/testService/endpoints/0.1.2.3:1234")
 
 }
 
 func (s *ConfigBridgeSuite) TestGetHAProxyEndpointsForService(c *C) {
 
-	_, err := s.etcd.Set("/test/services/testService2/endpoints/10.1.2.3:1234", "foobar", 10)
+	_, err := s.etcd.Set("/test/services/testService2/endpoints/10.1.2.3:1234", "{\"Revision\":\"foobar\"}", 10)
 	if err != nil {
 		panic(err)
 	}
@@ -251,7 +277,7 @@ func (s *ConfigBridgeSuite) TestGetHAProxyEndpointsForService(c *C) {
 	endpoints, err := containrunner.GetHAProxyEndpointsForService("testService2")
 	c.Assert(err, IsNil)
 
-	c.Assert(endpoints["10.1.2.3:1234"], Equals, "foobar")
+	c.Assert(endpoints["10.1.2.3:1234"].Revision, Equals, "foobar")
 
 }
 
@@ -320,7 +346,9 @@ func (s *ConfigBridgeSuite) TestSetServiceRevision(c *C) {
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test"
 
-	serviceRevision := ServiceRevision{"asdf"}
+	serviceRevision := ServiceRevision{
+		Revision: "asdf",
+	}
 	var serviceRevision2 ServiceRevision
 
 	err := containrunner.SetServiceRevision("myservice", serviceRevision, s.etcd)

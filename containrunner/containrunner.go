@@ -64,9 +64,6 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 			}
 			if !DeepEqual(machineConfiguration, newMachineConfiguration) {
 
-				log.Info(LogString("Checking DeepEqual of the Containers"))
-				DeepEqual(machineConfiguration.Services["comet"].Container, newMachineConfiguration.Services["comet"].Container)
-
 				log.Info(LogString("MainExecutionLoop got new configuration"))
 
 				bytes, _ := json.MarshalIndent(machineConfiguration, "", "    ")
@@ -79,8 +76,12 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 				}(&containrunner, newMachineConfiguration, machineConfiguration)
 
 				machineConfiguration = newMachineConfiguration
-				checkEngine.PushNewConfiguration(machineConfiguration)
 				ConvergeContainers(machineConfiguration, docker)
+
+				// This must be done after the containers have been converged so that the Check Engine
+				// can report the correct container revision
+				checkEngine.PushNewConfiguration(machineConfiguration)
+
 				lastConverge = time.Now()
 			} else if time.Now().Sub(lastConverge) > time.Second*10 {
 				ConvergeContainers(machineConfiguration, docker)
@@ -114,3 +115,19 @@ func GetEtcdClient(endpoints []string) *etcd.Client {
 	e := etcd.NewClient(endpoints)
 	return e
 }
+
+/*
+func LogSocketCount(pos string) {
+	out, err := exec.Command("netstat", "-np").Output()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	m := 0
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.Index(line, "orbitctl") != -1 {
+			m++
+		}
+	}
+	fmt.Printf("***** %d open sockets at pos %s\n", m, pos)
+}*/

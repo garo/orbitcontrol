@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 )
 
 /*
@@ -50,19 +51,27 @@ type MachineConfiguration struct {
 }
 
 type ServiceConfiguration struct {
-	Name         string
-	EndpointPort int
-	Checks       []ServiceCheck
-	Container    *ContainerConfiguration
-	Revision     *ServiceRevision
+	Name          string
+	EndpointPort  int
+	Checks        []ServiceCheck
+	Container     *ContainerConfiguration
+	Revision      *ServiceRevision
+	SourceControl *SourceControl
+}
+
+type SourceControl struct {
+	Origin     string
+	OAuthToken string
+	CIUrl      string
 }
 
 type ServiceRevision struct {
-	Revision string
+	Revision       string
+	DeploymentTime time.Time
 }
 
 type ConfigResultPublisher interface {
-	PublishServiceState(serviceName string, endpoint string, ok bool)
+	PublishServiceState(serviceName string, endpoint string, ok bool, info *EndpointInfo)
 }
 
 type ConfigResultEtcdPublisher struct {
@@ -72,6 +81,11 @@ type ConfigResultEtcdPublisher struct {
 	etcd          *etcd.Client
 }
 
+// Stored inside file /orbit/machineconfigurations/tags/<tag>/haproxy_endpoints/<service_name>
+type EndpointInfo struct {
+	Revision string
+}
+
 // Log events
 type ServiceStateChangeEvent struct {
 	ServiceName string
@@ -79,7 +93,7 @@ type ServiceStateChangeEvent struct {
 	IsUp        bool
 }
 
-func (c *ConfigResultEtcdPublisher) PublishServiceState(serviceName string, endpoint string, ok bool) {
+func (c *ConfigResultEtcdPublisher) PublishServiceState(serviceName string, endpoint string, ok bool, info *EndpointInfo) {
 	if c.etcd == nil {
 		fmt.Fprintf(os.Stderr, "Creating new Etcd client so that we can report that service %s at %s is %+v\n", serviceName, endpoint, ok)
 		c.etcd = GetEtcdClient(c.EtcdEndpoints)
@@ -111,7 +125,8 @@ func (c *ConfigResultEtcdPublisher) PublishServiceState(serviceName string, endp
 	}
 
 	if ok {
-		_, err = c.etcd.Set(key, "{}", c.ttl)
+		bytes, err := json.Marshal(info)
+		_, err = c.etcd.Set(key, string(bytes), c.ttl)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error setting key %s to etcd. Error: %+v\n", key, err)
 			c.etcd = nil
@@ -301,6 +316,7 @@ func (c *Containrunner) GetServiceByName(name string, etcdClient *etcd.Client) (
 	}
 
 	serviceConfiguration := ServiceConfiguration{}
+	var serviceRevision *ServiceRevision
 
 	for _, node := range res.Node.Nodes {
 		if node.Dir == false && strings.HasSuffix(node.Key, "/config") {
@@ -308,7 +324,14 @@ func (c *Containrunner) GetServiceByName(name string, etcdClient *etcd.Client) (
 			if err != nil {
 				panic(err)
 			}
+		}
 
+		if node.Dir == false && strings.HasSuffix(node.Key, "/revision") {
+			serviceRevision = new(ServiceRevision)
+			err = json.Unmarshal([]byte(node.Value), serviceRevision)
+			if err != nil {
+				panic(err)
+			}
 		}
 
 		/*
@@ -316,6 +339,10 @@ func (c *Containrunner) GetServiceByName(name string, etcdClient *etcd.Client) (
 				//			name := node.Key[len(res.Node.Key)+1:]
 				//services[name] = c.GetServiceByName(name)
 			} */
+	}
+
+	if serviceRevision != nil {
+		serviceConfiguration.Revision = serviceRevision
 	}
 
 	return serviceConfiguration, nil
@@ -395,8 +422,12 @@ func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []
 	return configuration, nil
 }
 
-func (c Containrunner) GetHAProxyEndpointsForService(service_name string) (map[string]string, error) {
+func (c Containrunner) GetHAProxyEndpointsForService(service_name string) (map[string]*EndpointInfo, error) {
+
 	etcdClient := GetEtcdClient(c.EtcdEndpoints)
+	defer func() {
+		etcdClient.Close()
+	}()
 
 	res, err := etcdClient.Get(c.EtcdBasePath+"/services/"+service_name+"/endpoints", true, true)
 	if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
@@ -407,12 +438,14 @@ func (c Containrunner) GetHAProxyEndpointsForService(service_name string) (map[s
 		return nil, nil
 	}
 
-	backendServers := make(map[string]string)
+	backendServers := make(map[string]*EndpointInfo)
 
 	for _, endpoint := range res.Node.Nodes {
 		if endpoint.Dir == false {
 			name := string(endpoint.Key[len(res.Node.Key)+1:])
-			backendServers[name] = endpoint.Value
+			endpointInfo := new(EndpointInfo)
+			json.Unmarshal([]byte(endpoint.Value), endpointInfo)
+			backendServers[name] = endpointInfo
 		}
 	}
 
@@ -461,10 +494,13 @@ func (c Containrunner) GetServiceRevision(service_name string, etcd *etcd.Client
 	return serviceRevision, nil
 }
 
-func (c Containrunner) SetServiceRevision(service_name string, serviceRevision ServiceRevision, etcd *etcd.Client) error {
+func (c Containrunner) SetServiceRevision(service_name string, serviceRevision ServiceRevision, etcdClient *etcd.Client) error {
+	if etcdClient == nil {
+		etcdClient = GetEtcdClient(c.EtcdEndpoints)
+	}
 
 	bytes, err := json.Marshal(serviceRevision)
-	_, err = etcd.Set(c.EtcdBasePath+"/services/"+service_name+"/revision", string(bytes), 0)
+	_, err = etcdClient.Set(c.EtcdBasePath+"/services/"+service_name+"/revision", string(bytes), 0)
 	if err != nil {
 		return err
 	}

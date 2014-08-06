@@ -108,7 +108,7 @@ func (s *CheckerSuite) TestIndividualCheckWorker(c *C) {
 	results := make(chan CheckResult, 10)
 
 	go IndividualCheckWorker(1, jobs, results, "10.0.0.0")
-	jobs <- ServiceChecks{"failingService", 55, []ServiceCheck{checkFalse}}
+	jobs <- ServiceChecks{"failingService", 55, []ServiceCheck{checkFalse}, nil}
 	close(jobs)
 
 	result := <-results
@@ -122,7 +122,7 @@ func (s *CheckerSuite) TestIndividualCheckWorker(c *C) {
 type TestConfigResultPublisher struct {
 }
 
-func (c TestConfigResultPublisher) PublishServiceState(serviceName string, endpoint string, result bool) {
+func (c TestConfigResultPublisher) PublishServiceState(serviceName string, endpoint string, result bool, info *EndpointInfo) {
 	if serviceName != "okService" || result != true || endpoint != "da-endpoint" {
 		panic("TestPublishCheckResultWorker test failed")
 	}
@@ -135,7 +135,7 @@ func (s *CheckerSuite) TestPublishCheckResultWorker(c *C) {
 	var rp TestConfigResultPublisher
 
 	go PublishCheckResultWorker(results, rp)
-	results <- CheckResult{"okService", "da-endpoint", true}
+	results <- CheckResult{"okService", "da-endpoint", true, nil}
 	close(results)
 
 }

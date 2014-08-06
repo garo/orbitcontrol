@@ -1,12 +1,16 @@
 package containrunner
 
-import "encoding/json"
-import "github.com/fsouza/go-dockerclient"
-import "fmt"
-import "strings"
-import "os"
-import "net"
-import "regexp"
+import (
+	"encoding/json"
+	"fmt"
+	"github.com/fsouza/go-dockerclient"
+	"io/ioutil"
+	"net"
+	"net/http"
+	"os"
+	"regexp"
+	"strings"
+)
 
 type ContainerConfiguration struct {
 	HostConfig docker.HostConfig
@@ -143,15 +147,16 @@ func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
 			ready_for_launch = append(ready_for_launch, required_service)
 		}
 
-		/*
-			if len(matching_containers) == 1 {
-				if matching_containers[0].Container.State.Running {
-					fmt.Println("Found one matching container and it's running")
-				} else {
-					fmt.Println("Found one matching container and it's not running!", matching_containers[0])
+		if len(matching_containers) == 1 {
+			if !matching_containers[0].Container.State.Running {
+				fmt.Println("Found one matching container and it's not running! Removing it so we can start it again", matching_containers[0])
+				err = client.RemoveContainer(docker.RemoveContainerOptions{matching_containers[0].Container.ID, true, true})
+				if err != nil {
+					panic(err)
 				}
+
 			}
-		*/
+		}
 	}
 
 	//	fmt.Println("Remaining running containers: ", len(existing_containers))
@@ -181,19 +186,97 @@ func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
 
 }
 
-func LaunchContainer(serviceConfiguration ServiceConfiguration, client *docker.Client) {
+func GetContainerImageNameWithRevision(serviceConfiguration ServiceConfiguration, revision string) string {
+	var imageRegexp = regexp.MustCompile("(.+):")
+
+	if revision == "" && serviceConfiguration.Revision != nil && serviceConfiguration.Revision.Revision != "" {
+		revision = serviceConfiguration.Revision.Revision
+	}
+
+	if revision != "" {
+		m := imageRegexp.FindStringSubmatch(serviceConfiguration.Container.Config.Image)
+		return m[1] + ":" + revision
+
+	}
+
+	return serviceConfiguration.Container.Config.Image
+}
+
+func (c *ServiceConfiguration) GetRevision() string {
+	var imageRegexp = regexp.MustCompile("(.+):(.+)")
+
+	if c.Revision != nil && c.Revision.Revision != "" {
+		return c.Revision.Revision
+	} else {
+		m := imageRegexp.FindStringSubmatch(c.Container.Config.Image)
+		return m[2]
+	}
+}
+
+func GetContainerImage(imageName string, client *docker.Client) (*docker.Image, error) {
+	if client == nil {
+		client = GetDockerClient()
+	}
 
 	// Check if we need to pull the image first
-	image, err := client.InspectImage(serviceConfiguration.Container.Config.Image)
+	image, err := client.InspectImage(imageName)
 	if err != nil && err != docker.ErrNoSuchImage {
+		return nil, err
+	}
+
+	return image, nil
+}
+
+type RepositoryTagResponse struct {
+	LastUpdate int64 `json:"last_update"`
+}
+
+func VerifyContainerExistsInRepository(image_name string, overrided_revision string) (bool, int64, error) {
+	// http://registry.applifier.info:5000/comet:ac937833f0af968be564230820a625c17f2e3ef1
+	var imageRegexp = regexp.MustCompile("(.+)/(.+?):(.+)")
+	m := imageRegexp.FindStringSubmatch(image_name)
+
+	if overrided_revision != "" {
+		m[3] = overrided_revision
+	}
+
+	// http://registry.applifier.info:5000/v1/repositories/comet/tags/ac937833f0af968be564230820a625c17f2e3ef1/json
+	url := "http://" + m[1] + "/v1/repositories/" + m[2] + "/tags/" + m[3] + "/json"
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return false, 0, err
+	}
+	defer resp.Body.Close()
+
+	var data RepositoryTagResponse
+
+	body, err := ioutil.ReadAll(resp.Body)
+	err = json.Unmarshal([]byte(body), &data)
+	if err != nil {
+		return false, 0, err
+	}
+
+	if data.LastUpdate == 0 {
+		return false, 0, nil
+	}
+	return true, data.LastUpdate, nil
+}
+
+func LaunchContainer(serviceConfiguration ServiceConfiguration, client *docker.Client) {
+
+	imageName := GetContainerImageNameWithRevision(serviceConfiguration, "")
+
+	image, err := GetContainerImage(imageName, client)
+	if err != nil {
 		panic(err)
 	}
 
 	if image == nil {
-		log.Info(LogEvent(ContainerLogEvent{"pulling", serviceConfiguration.Container.Config.Image, ""}))
+		log.Info(LogEvent(ContainerLogEvent{"pulling", imageName, ""}))
 		var pullImageOptions docker.PullImageOptions
-		pullImageOptions.Registry = serviceConfiguration.Container.Config.Image[0:strings.Index(serviceConfiguration.Container.Config.Image, "/")]
-		imagePlusTag := serviceConfiguration.Container.Config.Image[strings.Index(serviceConfiguration.Container.Config.Image, "/")+1:]
+		pullImageOptions.Registry = imageName[0:strings.Index(imageName, "/")]
+		imagePlusTag := imageName[strings.Index(imageName, "/")+1:]
 		pullImageOptions.Repository = pullImageOptions.Registry + "/" + imagePlusTag[0:strings.Index(imagePlusTag, ":")]
 		pullImageOptions.Tag = imagePlusTag[strings.Index(imagePlusTag, ":")+1:]
 		pullImageOptions.OutputStream = os.Stderr
@@ -204,7 +287,9 @@ func LaunchContainer(serviceConfiguration ServiceConfiguration, client *docker.C
 
 	var options docker.CreateContainerOptions
 	options.Name = serviceConfiguration.Name
-	options.Config = &serviceConfiguration.Container.Config
+	var config docker.Config = serviceConfiguration.Container.Config
+	config.Image = imageName
+	options.Config = &config
 
 	var addresses []string
 	addresses, err = net.LookupHost("skydns.services.dev.docker")
@@ -215,7 +300,7 @@ func LaunchContainer(serviceConfiguration ServiceConfiguration, client *docker.C
 
 	// Check if we need to stop and remove the old container
 	var existing_containers_info []docker.APIContainers
-	existing_containers_info, err = client.ListContainers(docker.ListContainersOptions{All: false})
+	existing_containers_info, err = client.ListContainers(docker.ListContainersOptions{All: true})
 	if err != nil {
 		panic(err)
 	}
@@ -248,7 +333,7 @@ func LaunchContainer(serviceConfiguration ServiceConfiguration, client *docker.C
 	}
 
 	fmt.Println("Creating container", options)
-	log.Info(LogEvent(ContainerLogEvent{"create-and-launch", serviceConfiguration.Container.Config.Image, serviceConfiguration.Name}))
+	log.Info(LogEvent(ContainerLogEvent{"create-and-launch", imageName, serviceConfiguration.Name}))
 	container, err := client.CreateContainer(options)
 	if err != nil {
 		panic(err)

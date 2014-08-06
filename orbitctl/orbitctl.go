@@ -7,7 +7,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/coreos/go-etcd/etcd"
 	"github.com/garo/orbitcontrol/containrunner"
+	"log"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -57,6 +59,7 @@ func init() {
 		cmdServices,
 		cmdImport,
 		cmdTag,
+		cmdService,
 	}
 
 	globalFlagset.BoolVar(&globalFlags.Debug, "debug", false, "Print out more debug information to stderr")
@@ -71,6 +74,11 @@ func main() {
 
 	containrunnerInstance.EtcdEndpoints = strings.Split(globalFlags.EtcdEndpoint, ",")
 	containrunnerInstance.EtcdBasePath = globalFlags.EtcdBasePath
+
+	if globalFlags.Debug {
+		fmt.Fprintf(os.Stderr, "Turning etcd logging on")
+		etcd.SetLogger(log.New(os.Stderr, "go-etcd", log.LstdFlags))
+	}
 
 	var args = globalFlagset.Args()
 
