@@ -2,6 +2,7 @@ package containrunner
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/coreos/go-etcd/etcd"
 	. "gopkg.in/check.v1"
 )
@@ -61,6 +62,10 @@ Content-Type: text/html
 
 `)
 
+	fmt.Printf("TEST: %+v\n", orbitConfiguration.MachineConfigurations["testtag"].Services["dashboards"])
+
+	c.Assert(orbitConfiguration.MachineConfigurations["testtag"].Services["comet"], Not(IsNil))
+
 	c.Assert(orbitConfiguration.Services["comet"].Name, Equals, "comet")
 	c.Assert(orbitConfiguration.Services["comet"].EndpointPort, Equals, 3500)
 	c.Assert(orbitConfiguration.Services["comet"].Checks[0].Type, Equals, "http")
@@ -118,8 +123,11 @@ Content-Type: text/html
 
 	res, err = s.etcd.Get("/test/services/comet/config", true, true)
 	c.Assert(err, IsNil)
+	c.Assert(res.Node.Value, Equals, "{\"Name\":\"comet\",\"EndpointPort\":3500,\"Checks\":[{\"Type\":\"http\",\"Url\":\"http://127.0.0.1:3500/check\",\"HostPort\":\"\",\"DummyResult\":false,\"ExpectHttpStatus\":\"\",\"ExpectString\":\"\"}],\"Container\":{\"HostConfig\":{\"Binds\":[\"/tmp:/data\"],\"ContainerIDFile\":\"\",\"LxcConf\":null,\"Privileged\":false,\"PortBindings\":null,\"Links\":null,\"PublishAllPorts\":false,\"Dns\":null,\"DnsSearch\":null,\"VolumesFrom\":null,\"NetworkMode\":\"host\"},\"Config\":{\"Hostname\":\"\",\"Domainname\":\"\",\"User\":\"\",\"Memory\":0,\"MemorySwap\":0,\"CpuShares\":0,\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"PortSpecs\":null,\"ExposedPorts\":null,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"NODE_ENV=vagrant\"],\"Cmd\":null,\"Dns\":null,\"Image\":\"registry.applifier.info:5000/comet:8fd079b54719d61b6feafbb8056b9ba09ade4760\",\"Volumes\":null,\"VolumesFrom\":\"\",\"WorkingDir\":\"\",\"Entrypoint\":null,\"NetworkDisabled\":false}},\"Revision\":null,\"SourceControl\":{\"Origin\":\"github.com/Applifier/comet\",\"OAuthToken\":\"\",\"CIUrl\":\"\"}}")
 
-	c.Assert(res.Node.Value, Equals, "{\"Name\":\"comet\",\"EndpointPort\":3500,\"Checks\":[{\"Type\":\"http\",\"Url\":\"http://127.0.0.1:3500/check\",\"HostPort\":\"\",\"DummyResult\":false,\"ExpectHttpStatus\":\"\",\"ExpectString\":\"\"}],\"Container\":{\"HostConfig\":{\"Binds\":[\"/tmp:/data\"],\"ContainerIDFile\":\"\",\"LxcConf\":null,\"Privileged\":false,\"PortBindings\":null,\"Links\":null,\"PublishAllPorts\":false,\"Dns\":null,\"DnsSearch\":null,\"VolumesFrom\":null,\"NetworkMode\":\"host\"},\"Config\":{\"Hostname\":\"\",\"Domainname\":\"\",\"User\":\"\",\"Memory\":0,\"MemorySwap\":0,\"CpuShares\":0,\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"PortSpecs\":null,\"ExposedPorts\":null,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"NODE_ENV=production\"],\"Cmd\":null,\"Dns\":null,\"Image\":\"registry.applifier.info:5000/comet:8fd079b54719d61b6feafbb8056b9ba09ade4760\",\"Volumes\":null,\"VolumesFrom\":\"\",\"WorkingDir\":\"\",\"Entrypoint\":null,\"NetworkDisabled\":false}},\"Revision\":null,\"SourceControl\":{\"Origin\":\"github.com/Applifier/comet\",\"OAuthToken\":\"\",\"CIUrl\":\"\"}}")
+	res, err = s.etcd.Get("/test/machineconfigurations/tags/testtag/services/comet", true, true)
+	c.Assert(err, IsNil)
+	c.Assert(res.Node.Value, Equals, "{}")
 
 }
 

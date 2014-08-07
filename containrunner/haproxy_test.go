@@ -129,8 +129,10 @@ func (s *HAProxySuite) TestBuildAndVerifyNewConfigWithErrors(c *C) {
 		},
 	}
 
-	err := settings.BuildAndVerifyNewConfig(moc, configuration)
+	config, err := settings.BuildAndVerifyNewConfig(moc, configuration)
 	c.Assert(err, Not(IsNil))
+	c.Assert(config, Equals, "")
+
 }
 
 func (s *HAProxySuite) TestBuildAndVerifyNewConfig(c *C) {
@@ -158,7 +160,11 @@ Content-Type: text/html
 
 `
 
-	err := settings.BuildAndVerifyNewConfig(moc, configuration)
+	config, err := settings.BuildAndVerifyNewConfig(moc, configuration)
+	c.Assert(err, IsNil)
+	c.Assert(config, Equals, configuration.Template)
+
+	err = settings.CommitNewConfig(config, false)
 	c.Assert(err, IsNil)
 
 	bytes, err := ioutil.ReadFile(settings.HAProxyConfigPath + "/500.http")

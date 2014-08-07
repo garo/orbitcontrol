@@ -81,7 +81,7 @@ type ConfigResultEtcdPublisher struct {
 	etcd          *etcd.Client
 }
 
-// Stored inside file /orbit/machineconfigurations/tags/<tag>/haproxy_endpoints/<service_name>
+// Stored inside file /orbit/services/<service>/endpoints/<host:port>
 type EndpointInfo struct {
 	Revision string
 }
@@ -139,7 +139,24 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 	oc.MachineConfigurations = make(map[string]MachineConfiguration)
 	oc.Services = make(map[string]ServiceConfiguration)
 
-	files, err := ioutil.ReadDir(startpath + "/machineconfigurations/tags/")
+	files, err := ioutil.ReadDir(startpath + "/services/")
+	if err != nil {
+		return nil, err
+	}
+
+	for _, file := range files {
+		var serviceConfiguration ServiceConfiguration
+		fname := startpath + "/services/" + file.Name()
+		serviceConfiguration, err = c.ReadServiceFromFile(fname)
+		if err != nil {
+			return nil, errors.New("LoadConfigurationsFromFiles: Could not load file " + fname)
+		}
+		fmt.Fprintf(os.Stderr, "Loading service %s from file %s\n", serviceConfiguration.Name, fname)
+
+		oc.Services[serviceConfiguration.Name] = serviceConfiguration
+	}
+
+	files, err = ioutil.ReadDir(startpath + "/machineconfigurations/tags/")
 	if err != nil {
 		return nil, err
 	}
@@ -150,6 +167,7 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 		}
 
 		var mc MachineConfiguration
+		mc.Services = make(map[string]ServiceConfiguration)
 		var bytes []byte
 
 		fname := startpath + "/machineconfigurations/tags/" + tag.Name() + "/haproxy.tpl"
@@ -180,25 +198,35 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 			}
 		}
 
+		files, err = ioutil.ReadDir(startpath + "/machineconfigurations/tags/" + tag.Name() + "/services/")
+		if err == nil {
+			for _, file := range files {
+				if file.IsDir() {
+					panic(errors.New("LoadConfigurationsFromFiles: File " + file.Name() + " is a directory when its not allowed"))
+				}
+				fname := startpath + "/machineconfigurations/tags/" + tag.Name() + "/services/" + file.Name()
+				service_name := file.Name()[0 : len(file.Name())-5]
+
+				fmt.Fprintf(os.Stderr, "Loading service %s from tag mapping file %s for tag %s from file %s\n", service_name, file.Name(), tag.Name(), fname)
+
+				bytes, err = ioutil.ReadFile(fname)
+				if err != nil {
+					panic(errors.New(fmt.Sprintf("LoadConfigurationsFromFiles: Could not load tagging file %s. Error: %+v", fname, err)))
+
+				}
+
+				service, ok := oc.Services[service_name]
+				if !ok {
+					fmt.Fprintf(os.Stderr, "Could not find service %s when tried to tag it to %s\n", service_name, tag.Name())
+					return nil, err
+				}
+				mc.Services[service_name] = service
+
+			}
+		}
+
 		oc.MachineConfigurations[tag.Name()] = mc
 
-	}
-
-	files, err = ioutil.ReadDir(startpath + "/services/")
-	if err != nil {
-		return nil, err
-	}
-
-	for _, file := range files {
-		var serviceConfiguration ServiceConfiguration
-		fname := startpath + "/services/" + file.Name()
-		serviceConfiguration, err = c.ReadServiceFromFile(fname)
-		if err != nil {
-			return nil, errors.New("LoadConfigurationsFromFiles: Could not load file " + fname)
-		}
-		fmt.Fprintf(os.Stderr, "Loading service %s from file %s\n", serviceConfiguration.Name, fname)
-
-		oc.Services[serviceConfiguration.Name] = serviceConfiguration
 	}
 
 	return oc, nil
@@ -211,6 +239,7 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 
 	for tag, mc := range orbitConfiguration.MachineConfigurations {
 		etcdClient.CreateDir(c.EtcdBasePath+"/machineconfigurations/tags/"+tag, 0)
+		etcdClient.CreateDir(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/services", 0)
 
 		if mc.HAProxyConfiguration != nil {
 			_, err := etcdClient.Set(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/haproxy_config", mc.HAProxyConfiguration.Template, 0)
@@ -227,6 +256,13 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 						return err
 					}
 				}
+			}
+		}
+
+		for name, _ := range mc.Services {
+			_, err := etcdClient.Set(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/services/"+name, "{}", 0)
+			if err != nil {
+				return err
 			}
 		}
 	}
@@ -379,7 +415,8 @@ func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []
 
 		res, err := etcd.Get(c.EtcdBasePath+"/machineconfigurations/tags/"+tag, true, true)
 		if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
-			panic(err)
+			fmt.Fprintf(os.Stderr, "Error getting machine configuration. Err: %+v\n", err)
+			return configuration, err
 		}
 
 		if err != nil {

@@ -61,7 +61,11 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 				} else {
 					panic(err)
 				}
+				log.Info(LogString("Sleeping for 5 seconds due to error on GetMachineConfigurationByTags"))
+				time.Sleep(time.Second * 5)
+				continue
 			}
+
 			if !DeepEqual(machineConfiguration, newMachineConfiguration) {
 
 				log.Info(LogString("MainExecutionLoop got new configuration"))

@@ -85,22 +85,25 @@ func NewHAProxyEndpoint() *HAProxyEndpoint {
 }
 
 func (hac *HAProxySettings) ConvergeHAProxy(cbi ConfigBridgeInterface, configuration *HAProxyConfiguration, oldConfiguration *HAProxyConfiguration) error {
-	log.Info(LogString("ConvergeHAProxy running"))
 	if configuration == nil {
 		fmt.Fprintf(os.Stderr, "Error, HAProxy config is still nil!\n")
 		return nil
 	}
 
-	err := hac.BuildAndVerifyNewConfig(cbi, configuration)
+	config, err := hac.BuildAndVerifyNewConfig(cbi, configuration)
 	if err != nil {
 		log.Error(LogString("Error building new HAProxy configuration"))
-
 		return err
 	}
 
 	reload_required, err := hac.UpdateBackends(configuration)
 	if err != nil {
 		log.Error(LogString(fmt.Sprintf("Error updating haproxy via stats socket. Error: %+v", err)))
+		return err
+	}
+
+	err = hac.CommitNewConfig(config, reload_required)
+	if err != nil {
 		return err
 	}
 
@@ -137,7 +140,7 @@ func (hac *HAProxySettings) ReloadHAProxy() error {
 	return nil
 }
 
-func (hac *HAProxySettings) BuildAndVerifyNewConfig(cbi ConfigBridgeInterface, configuration *HAProxyConfiguration) error {
+func (hac *HAProxySettings) BuildAndVerifyNewConfig(cbi ConfigBridgeInterface, configuration *HAProxyConfiguration) (string, error) {
 
 	new_config, err := ioutil.TempFile(os.TempDir(), "haproxy_new_config_")
 	if new_config != nil {
@@ -148,7 +151,7 @@ func (hac *HAProxySettings) BuildAndVerifyNewConfig(cbi ConfigBridgeInterface, c
 
 	config, err := hac.GetNewConfig(cbi, configuration)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	new_config.WriteString(config)
@@ -167,12 +170,12 @@ func (hac *HAProxySettings) BuildAndVerifyNewConfig(cbi ConfigBridgeInterface, c
 	stderrPipe, err := cmd.StderrPipe()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error (cmd.StderrPipe) verifying haproxy config with binary %s. Error: %+v\n", hac.HAProxyBinary, err)
-		return err
+		return "", err
 	}
 
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error (cmd.Start) verifying haproxy config with binary %s. Error: %+v\n", hac.HAProxyBinary, err)
-		return err
+		return "", err
 	}
 
 	stderr, err := ioutil.ReadAll(stderrPipe)
@@ -180,25 +183,33 @@ func (hac *HAProxySettings) BuildAndVerifyNewConfig(cbi ConfigBridgeInterface, c
 
 	if err != nil {
 		log.Error(LogEvent(HAProxyConfigError{config, string(stderr)}))
-		return errors.New("Invalid HAProxy configuration")
+		return "", errors.New("Invalid HAProxy configuration")
 	}
+
+	return config, nil
+}
+
+func (hac *HAProxySettings) CommitNewConfig(config string, backup bool) error {
 
 	l := HAProxyConfigChangeLog{}
 	var contents []byte
-	contents, err = ioutil.ReadFile(hac.HAProxyConfigPath + "/" + hac.HAProxyConfigName)
+	contents, err := ioutil.ReadFile(hac.HAProxyConfigPath + "/" + hac.HAProxyConfigName)
 	if err == nil {
 		l.OldConfig = string(contents)
 	}
 
 	l.NewConfig = config
-	l.OldConfigBackupFile = hac.HAProxyConfigPath + "/" + hac.HAProxyConfigName + "-" + time.Now().Format(time.RFC3339)
 
-	err = os.Link(hac.HAProxyConfigPath+"/"+hac.HAProxyConfigName, l.OldConfigBackupFile)
-	if err != nil && !os.IsNotExist(err) {
-		log.Error(LogString("Error linking config backup!" + err.Error()))
-		return err
-	} else if err != nil && os.IsNotExist(err) {
-		l.OldConfigBackupFile = ""
+	if backup {
+		l.OldConfigBackupFile = hac.HAProxyConfigPath + "/" + hac.HAProxyConfigName + "-" + time.Now().Format(time.RFC3339)
+
+		err = os.Link(hac.HAProxyConfigPath+"/"+hac.HAProxyConfigName, l.OldConfigBackupFile)
+		if err != nil && !os.IsNotExist(err) {
+			log.Error(LogString("Error linking config backup!" + err.Error()))
+			return err
+		} else if err != nil && os.IsNotExist(err) {
+			l.OldConfigBackupFile = ""
+		}
 	}
 
 	//log.Debug(LogEvent(l))
@@ -210,6 +221,7 @@ func (hac *HAProxySettings) BuildAndVerifyNewConfig(cbi ConfigBridgeInterface, c
 	}
 
 	return nil
+
 }
 
 func (hac *HAProxySettings) GetNewConfig(cbi ConfigBridgeInterface, configuration *HAProxyConfiguration) (string, error) {
@@ -271,15 +283,16 @@ func (hac *HAProxySettings) UpdateBackends(configuration *HAProxyConfiguration) 
 	}
 	defer c.Close()
 
-	contains := func(s []string, e string) bool {
-		for _, a := range s {
-			if a == e {
-				return true
+	/*
+		contains := func(s []string, e string) bool {
+			for _, a := range s {
+				if a == e {
+					return true
+				}
 			}
+			return false
 		}
-		return false
-	}
-
+	*/
 	_, err = c.Write([]byte("show stat\n"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error on show stat command. Error: %+v\n", err)
@@ -294,7 +307,7 @@ func (hac *HAProxySettings) UpdateBackends(configuration *HAProxyConfiguration) 
 
 	// Build list of currently existing backends in the running haproxy
 	current_backends := make(map[string]map[string]string)
-	enabled_backends := make(map[string][]string)
+	enabled_backends := make(map[string]bool)
 
 	for _, line := range lines {
 		if line == "" || line[0] == '#' {
@@ -315,7 +328,9 @@ func (hac *HAProxySettings) UpdateBackends(configuration *HAProxyConfiguration) 
 	//fmt.Printf("current backends: %+v\n", current_backends)
 
 	for service_name, backend_servers := range configuration.ServiceBackends {
-		if _, ok := current_backends[service_name]; ok == false {
+		//fmt.Printf("Service backend for service_name %s: %+v", service_name, backend_servers)
+		// Check that there actually is configured servers for this backend before dooming that haproxy needs to be restarted
+		if _, ok := current_backends[service_name]; ok == false && len(backend_servers) > 0 {
 			fmt.Printf("Restart required: missing section %s\n", service_name)
 			return true, nil
 		}
@@ -324,7 +339,7 @@ func (hac *HAProxySettings) UpdateBackends(configuration *HAProxyConfiguration) 
 				fmt.Printf("Restart required: missing endpoint %s from section %s\n", service_name+"-"+backendServer, service_name)
 				return true, nil
 			}
-			enabled_backends[service_name] = append(enabled_backends[service_name], service_name+"-"+backendServer)
+			enabled_backends[service_name+"-"+backendServer] = true
 		}
 	}
 	//fmt.Printf("enabled backends: %+v\n", enabled_backends)
@@ -332,7 +347,7 @@ func (hac *HAProxySettings) UpdateBackends(configuration *HAProxyConfiguration) 
 	for section_name, section_backends := range current_backends {
 		for backend, backend_status := range section_backends {
 			command := ""
-			if contains(enabled_backends[section_name], backend) == true {
+			if _, ok := enabled_backends[backend]; ok == true {
 				if backend_status == "MAINT" {
 					command = "enable server " + section_name + "/" + backend + "\n"
 				}
