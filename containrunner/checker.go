@@ -11,6 +11,9 @@ import "io/ioutil"
 type ServiceCheck struct {
 	Type             string
 	Url              string
+	HttpHost         string
+	Username         string
+	Password         string
 	HostPort         string
 	DummyResult      bool
 	ExpectHttpStatus string
@@ -170,8 +173,17 @@ func CheckHttpService(check ServiceCheck) (ok bool) {
 		},
 	}
 
+	req, _ := http.NewRequest("GET", check.Url, nil)
+	if check.HttpHost != "" {
+		req.Host = check.HttpHost
+	}
+
+	if check.Username != "" || check.Password != "" {
+		req.SetBasicAuth(check.Username, check.Password)
+	}
+
 	//fmt.Printf("Checking http url %s\n", check.Url)
-	resp, err := client.Get(check.Url)
+	resp, err := client.Do(req)
 	if resp != nil {
 		defer resp.Body.Close()
 	}

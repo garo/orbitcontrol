@@ -159,7 +159,10 @@ func (hac *HAProxySettings) BuildAndVerifyNewConfig(cbi ConfigBridgeInterface, c
 
 	if configuration.Files != nil {
 		for name, contents := range configuration.Files {
-			err := ioutil.WriteFile(hac.HAProxyConfigPath+"/"+name, []byte(contents), 0644)
+			fname := hac.HAProxyConfigPath + "/" + name
+			//fmt.Fprintf(os.Stderr, "Writing haproxy file %s\n", fname)
+
+			err := ioutil.WriteFile(fname, []byte(contents), 0644)
 			if err != nil {
 				panic(err)
 			}

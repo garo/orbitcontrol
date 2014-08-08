@@ -123,7 +123,7 @@ Content-Type: text/html
 
 	res, err = s.etcd.Get("/test/services/comet/config", true, true)
 	c.Assert(err, IsNil)
-	c.Assert(res.Node.Value, Equals, "{\"Name\":\"comet\",\"EndpointPort\":3500,\"Checks\":[{\"Type\":\"http\",\"Url\":\"http://127.0.0.1:3500/check\",\"HostPort\":\"\",\"DummyResult\":false,\"ExpectHttpStatus\":\"\",\"ExpectString\":\"\"}],\"Container\":{\"HostConfig\":{\"Binds\":[\"/tmp:/data\"],\"ContainerIDFile\":\"\",\"LxcConf\":null,\"Privileged\":false,\"PortBindings\":null,\"Links\":null,\"PublishAllPorts\":false,\"Dns\":null,\"DnsSearch\":null,\"VolumesFrom\":null,\"NetworkMode\":\"host\"},\"Config\":{\"Hostname\":\"\",\"Domainname\":\"\",\"User\":\"\",\"Memory\":0,\"MemorySwap\":0,\"CpuShares\":0,\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"PortSpecs\":null,\"ExposedPorts\":null,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"NODE_ENV=vagrant\"],\"Cmd\":null,\"Dns\":null,\"Image\":\"registry.applifier.info:5000/comet:8fd079b54719d61b6feafbb8056b9ba09ade4760\",\"Volumes\":null,\"VolumesFrom\":\"\",\"WorkingDir\":\"\",\"Entrypoint\":null,\"NetworkDisabled\":false}},\"Revision\":null,\"SourceControl\":{\"Origin\":\"github.com/Applifier/comet\",\"OAuthToken\":\"\",\"CIUrl\":\"\"}}")
+	c.Assert(res.Node.Value, Equals, "{\"Name\":\"comet\",\"EndpointPort\":3500,\"Checks\":[{\"Type\":\"http\",\"Url\":\"http://127.0.0.1:3500/check\",\"HttpHost\":\"\",\"Username\":\"\",\"Password\":\"\",\"HostPort\":\"\",\"DummyResult\":false,\"ExpectHttpStatus\":\"\",\"ExpectString\":\"\"}],\"Container\":{\"HostConfig\":{\"Binds\":[\"/tmp:/data\"],\"ContainerIDFile\":\"\",\"LxcConf\":null,\"Privileged\":false,\"PortBindings\":null,\"Links\":null,\"PublishAllPorts\":false,\"Dns\":null,\"DnsSearch\":null,\"VolumesFrom\":null,\"NetworkMode\":\"host\"},\"Config\":{\"Hostname\":\"\",\"Domainname\":\"\",\"User\":\"\",\"Memory\":0,\"MemorySwap\":0,\"CpuShares\":0,\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"PortSpecs\":null,\"ExposedPorts\":null,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"NODE_ENV=vagrant\"],\"Cmd\":null,\"Dns\":null,\"Image\":\"registry.applifier.info:5000/comet:8fd079b54719d61b6feafbb8056b9ba09ade4760\",\"Volumes\":null,\"VolumesFrom\":\"\",\"WorkingDir\":\"\",\"Entrypoint\":null,\"NetworkDisabled\":false}},\"Revision\":null,\"SourceControl\":{\"Origin\":\"github.com/Applifier/comet\",\"OAuthToken\":\"\",\"CIUrl\":\"\"}}")
 
 	res, err = s.etcd.Get("/test/machineconfigurations/tags/testtag/services/comet", true, true)
 	c.Assert(err, IsNil)
@@ -131,7 +131,7 @@ Content-Type: text/html
 
 }
 
-func (s *ConfigBridgeSuite) TestGetMachineConfiguration(c *C) {
+func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTags(c *C) {
 
 	_, err := s.etcd.CreateDir("/machineconfigurations/tags/testtag/", 10)
 	if err != nil {
@@ -198,6 +198,12 @@ func (s *ConfigBridgeSuite) TestGetMachineConfiguration(c *C) {
 		panic(err)
 	}
 
+	_, err = s.etcd.CreateDir("/machineconfigurations/tags/testtag/haproxy_files", 10)
+	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/haproxy_files/foo.txt", "hello", 10)
+	if err != nil {
+		panic(err)
+	}
+
 	tags := []string{"testtag"}
 	var containrunner Containrunner
 	configuration, err := containrunner.GetMachineConfigurationByTags(s.etcd, tags)
@@ -211,6 +217,7 @@ func (s *ConfigBridgeSuite) TestGetMachineConfiguration(c *C) {
 	c.Assert(configuration.Services["comet"].Checks[0].Url, Equals, "http://localhost:3500/check")
 
 	c.Assert(configuration.HAProxyConfiguration.Template, Equals, "foobar")
+	c.Assert(configuration.HAProxyConfiguration.Files["foo.txt"], Equals, "hello")
 
 	c.Assert(configuration.Services["comet"].Revision.Revision, Equals, "asdf")
 

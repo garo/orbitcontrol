@@ -149,7 +149,16 @@ func (s *CheckerSuite) TestCheckIntervalWorker(c *C) {
 	mc.Services = make(map[string]ServiceConfiguration)
 	v := ServiceConfiguration{}
 	v.Name = "myContainer"
-	v.Checks = []ServiceCheck{{"dummyCheck", "", "", true, "", ""}}
+	v.Checks = []ServiceCheck{{
+		Type:             "dummyCheck",
+		Url:              "",
+		HttpHost:         "",
+		Username:         "",
+		Password:         "",
+		HostPort:         "",
+		DummyResult:      true,
+		ExpectHttpStatus: "",
+		ExpectString:     ""}}
 	mc.Services["myContainer"] = v
 
 	go CheckIntervalWorker(configurations, jobsChannel, 50)

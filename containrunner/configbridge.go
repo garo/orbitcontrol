@@ -174,7 +174,7 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 		bytes, err = ioutil.ReadFile(fname)
 		if err == nil {
 			mc.HAProxyConfiguration = NewHAProxyConfiguration()
-			fmt.Fprintf(os.Stderr, "Loading haproxy config for tag %s from file %s\n", tag.Name(), fname)
+			fmt.Fprintf(os.Stderr, "Loading haproxy config for tag %s from file ..%s\n", tag.Name(), fname[len(startpath):])
 			mc.HAProxyConfiguration.Template = string(bytes)
 		}
 
@@ -186,7 +186,7 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 				}
 				fname := startpath + "/machineconfigurations/tags/" + tag.Name() + "/haproxy_files/" + file.Name()
 
-				fmt.Fprintf(os.Stderr, "Loading haproxy static file %s for tag %s from file %s\n", file.Name(), tag.Name(), fname)
+				fmt.Fprintf(os.Stderr, "Loading haproxy static file %s for tag %s from file ..%s\n", file.Name(), tag.Name(), fname[len(startpath):])
 
 				bytes, err = ioutil.ReadFile(fname)
 				if err != nil {
@@ -207,7 +207,7 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 				fname := startpath + "/machineconfigurations/tags/" + tag.Name() + "/services/" + file.Name()
 				service_name := file.Name()[0 : len(file.Name())-5]
 
-				fmt.Fprintf(os.Stderr, "Loading service %s from tag mapping file %s for tag %s from file %s\n", service_name, file.Name(), tag.Name(), fname)
+				fmt.Fprintf(os.Stderr, "Loading service %s from tag mapping file %s for tag %s from file ..%s\n", service_name, file.Name(), tag.Name(), fname[len(startpath):])
 
 				bytes, err = ioutil.ReadFile(fname)
 				if err != nil {
@@ -451,6 +451,19 @@ func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []
 				}
 
 				configuration.HAProxyConfiguration.Template = node.Value
+			}
+
+			if node.Dir == true && strings.HasSuffix(node.Key, "/haproxy_files") {
+				if configuration.HAProxyConfiguration == nil {
+					configuration.HAProxyConfiguration = NewHAProxyConfiguration()
+				}
+
+				for _, file := range node.Nodes {
+					if file.Dir == false {
+						name := string(file.Key[len(node.Key)+1:])
+						configuration.HAProxyConfiguration.Files[name] = file.Value
+					}
+				}
 			}
 
 		}
