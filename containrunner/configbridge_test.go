@@ -199,7 +199,12 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTags(c *C) {
 	}
 
 	_, err = s.etcd.CreateDir("/machineconfigurations/tags/testtag/haproxy_files", 10)
-	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/haproxy_files/foo.txt", "hello", 10)
+	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/haproxy_files/hello.txt", "hello", 10)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/certs/test.pem", "----TEST-----", 10)
 	if err != nil {
 		panic(err)
 	}
@@ -217,7 +222,8 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTags(c *C) {
 	c.Assert(configuration.Services["comet"].Checks[0].Url, Equals, "http://localhost:3500/check")
 
 	c.Assert(configuration.HAProxyConfiguration.Template, Equals, "foobar")
-	c.Assert(configuration.HAProxyConfiguration.Files["foo.txt"], Equals, "hello")
+	c.Assert(configuration.HAProxyConfiguration.Certs["test.pem"], Equals, "----TEST-----")
+	c.Assert(configuration.HAProxyConfiguration.Files["hello.txt"], Equals, "hello")
 
 	c.Assert(configuration.Services["comet"].Revision.Revision, Equals, "asdf")
 

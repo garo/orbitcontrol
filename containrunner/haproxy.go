@@ -33,6 +33,7 @@ type HAProxyConfiguration struct {
 	Template string
 
 	// Map file name -> file contents
+	Certs map[string]string
 	Files map[string]string
 
 	// First string is service name, second string is backend host:port
@@ -72,6 +73,7 @@ type HAProxyConfigChangeLog struct {
 func NewHAProxyConfiguration() *HAProxyConfiguration {
 	configuration := new(HAProxyConfiguration)
 	configuration.Files = make(map[string]string)
+	configuration.Certs = make(map[string]string)
 	configuration.ServiceBackends = make(map[string]map[string]*EndpointInfo)
 
 	return configuration
@@ -157,11 +159,30 @@ func (hac *HAProxySettings) BuildAndVerifyNewConfig(cbi ConfigBridgeInterface, c
 	new_config.WriteString(config)
 	new_config.Close()
 
+	_, err = os.Stat(hac.HAProxyConfigPath + "/certs.d")
+	if err != nil || os.IsNotExist(err) {
+		err := os.Mkdir(hac.HAProxyConfigPath+"/certs.d", 0644)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Could not create directory for haproxy certs. Err: %+v\n", err)
+			return "", err
+		}
+	}
+
+	if configuration.Certs != nil {
+		for name, contents := range configuration.Certs {
+			fname := hac.HAProxyConfigPath + "/certs.d/" + name
+			//fmt.Fprintf(os.Stderr, "Writing haproxy file %s\n", fname)
+
+			err := ioutil.WriteFile(fname, []byte(contents), 0644)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
+
 	if configuration.Files != nil {
 		for name, contents := range configuration.Files {
 			fname := hac.HAProxyConfigPath + "/" + name
-			//fmt.Fprintf(os.Stderr, "Writing haproxy file %s\n", fname)
-
 			err := ioutil.WriteFile(fname, []byte(contents), 0644)
 			if err != nil {
 				panic(err)

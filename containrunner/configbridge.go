@@ -178,6 +178,26 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 			mc.HAProxyConfiguration.Template = string(bytes)
 		}
 
+		files, err = ioutil.ReadDir(startpath + "/machineconfigurations/tags/" + tag.Name() + "/certs/")
+		if err == nil {
+			for _, file := range files {
+				if file.IsDir() {
+					panic(errors.New("LoadConfigurationsFromFiles: File " + file.Name() + " is a directory when its not allowed"))
+				}
+				fname := startpath + "/machineconfigurations/tags/" + tag.Name() + "/certs/" + file.Name()
+
+				fmt.Fprintf(os.Stderr, "Loading certificate %s for tag %s from file ..%s\n", file.Name(), tag.Name(), fname[len(startpath):])
+
+				bytes, err = ioutil.ReadFile(fname)
+				if err != nil {
+					panic(errors.New(fmt.Sprintf("LoadConfigurationsFromFiles: Could not load certificate file %s. Error: %+v", fname, err)))
+
+				}
+				mc.HAProxyConfiguration.Certs[file.Name()] = string(bytes)
+
+			}
+		}
+
 		files, err = ioutil.ReadDir(startpath + "/machineconfigurations/tags/" + tag.Name() + "/haproxy_files/")
 		if err == nil {
 			for _, file := range files {
@@ -247,6 +267,17 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 				return err
 			}
 
+			if mc.HAProxyConfiguration.Certs != nil {
+				for name, contents := range mc.HAProxyConfiguration.Certs {
+					// TODO: implement old file removal
+
+					_, err := etcdClient.Set(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/certs/"+name, contents, 0)
+					if err != nil {
+						return err
+					}
+				}
+			}
+
 			if mc.HAProxyConfiguration.Files != nil {
 				for name, contents := range mc.HAProxyConfiguration.Files {
 					// TODO: implement old file removal
@@ -257,6 +288,7 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 					}
 				}
 			}
+
 		}
 
 		for name, _ := range mc.Services {
@@ -451,6 +483,19 @@ func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []
 				}
 
 				configuration.HAProxyConfiguration.Template = node.Value
+			}
+
+			if node.Dir == true && strings.HasSuffix(node.Key, "/certs") {
+				if configuration.HAProxyConfiguration == nil {
+					configuration.HAProxyConfiguration = NewHAProxyConfiguration()
+				}
+
+				for _, file := range node.Nodes {
+					if file.Dir == false {
+						name := string(file.Key[len(node.Key)+1:])
+						configuration.HAProxyConfiguration.Certs[name] = file.Value
+					}
+				}
 			}
 
 			if node.Dir == true && strings.HasSuffix(node.Key, "/haproxy_files") {
