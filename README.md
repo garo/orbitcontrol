@@ -21,6 +21,6 @@ For services deployed in containers a separated <strong>revision</strong> settin
 Dependencies
 ============
 
-Orbit control is created with Go language. This makes deployment really easy because only a single statically linked binary needs to be distributed to each machine. Only external dependency is the etcd configuration service.
+Orbit control is created with the Go language. This makes deployment really easy because only a single statically linked binary needs to be distributed to each machine. Only external dependency is the etcd configuration service.
 
 In addition you mostly likely want to use haproxy and docker. 
