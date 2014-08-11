@@ -35,6 +35,9 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 	var newMachineConfiguration MachineConfiguration
 	var err error
 
+	var webserver Webserver
+	webserver.Start()
+
 	quit := false
 	var lastConverge time.Time
 	for !quit {
@@ -99,6 +102,7 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 		}
 
 		time.Sleep(time.Second * 2)
+		webserver.Keepalive()
 
 	}
 }
