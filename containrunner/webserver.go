@@ -9,6 +9,7 @@ import (
 
 type Webserver struct {
 	lastKeepalive time.Time
+	haproxyOk     time.Time
 	server        *http.Server
 	listener      *net.Listener
 }
@@ -19,7 +20,7 @@ func (ce *Webserver) Keepalive() {
 
 func (ce *Webserver) checkHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Service", "orbit")
-	if !ce.lastKeepalive.IsZero() && time.Since(ce.lastKeepalive) < time.Minute {
+	if time.Since(ce.lastKeepalive) < time.Minute {
 		fmt.Fprintf(w, "OK\n")
 	} else {
 		http.Error(w, "Keepalive timeout", 500)
@@ -39,6 +40,7 @@ func (ce *Webserver) Start() error {
 		return err
 	}
 	ce.listener = &listener
+
 	go func() {
 		ce.server.Serve(*ce.listener)
 	}()
@@ -47,6 +49,7 @@ func (ce *Webserver) Start() error {
 }
 
 func (ce *Webserver) Close() {
+	// FIXME: Don't think the server close actually works.
 	if ce.listener != nil {
 		(*ce.listener).Close()
 		ce.listener = nil

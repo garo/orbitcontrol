@@ -16,26 +16,26 @@ func (s *WebserverSuite) SetUpTest(c *C) {
 }
 
 func (s *WebserverSuite) TestCheckHandler(c *C) {
+
 	server := new(Webserver)
-	server.Start()
+	err := server.Start()
+	c.Assert(err, IsNil)
+	resp, err := http.Get("http://localhost:1500/check")
+	c.Assert(err, IsNil)
+	body, err := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	c.Assert(string(body), Not(Equals), "OK\n")
+
 	server.Keepalive()
-	resp, err := http.Get("http://localhost:1500/check")
+
+	resp, err = http.Get("http://localhost:1500/check")
 	c.Assert(err, IsNil)
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
 
 	c.Assert(string(body), Equals, "OK\n")
-	server.Close()
-}
 
-func (s *WebserverSuite) TestCheckHandlerNoKeepalive(c *C) {
-	server := new(Webserver)
-	server.Start()
-	resp, err := http.Get("http://localhost:1500/check")
-	c.Assert(err, IsNil)
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-
-	c.Assert(string(body), Equals, "OK\n")
 	server.Close()
+
 }
