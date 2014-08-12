@@ -296,31 +296,21 @@ func (hac *HAProxySettings) GetNewConfig(cbi ConfigBridgeInterface, configuratio
 	return output.String(), nil
 }
 
-func (hac *HAProxySettings) UpdateBackends(configuration *HAProxyConfiguration) (bool, error) {
+func (hac *HAProxySettings) GetHaproxyBackends() (current_backends map[string]map[string]string, err error) {
 	c, err := net.Dial("unix", hac.HAProxySocket)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening HAProxy socket. Error: %+v\n", err)
 		if c != nil {
 			c.Close()
 		}
-		return true, nil
+		return nil, nil
 	}
 	defer c.Close()
 
-	/*
-		contains := func(s []string, e string) bool {
-			for _, a := range s {
-				if a == e {
-					return true
-				}
-			}
-			return false
-		}
-	*/
 	_, err = c.Write([]byte("show stat\n"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error on show stat command. Error: %+v\n", err)
-		return true, nil
+		return nil, nil
 	}
 
 	var bytes []byte
@@ -330,8 +320,7 @@ func (hac *HAProxySettings) UpdateBackends(configuration *HAProxyConfiguration) 
 	c.Close()
 
 	// Build list of currently existing backends in the running haproxy
-	current_backends := make(map[string]map[string]string)
-	enabled_backends := make(map[string]bool)
+	current_backends = make(map[string]map[string]string)
 
 	for _, line := range lines {
 		if line == "" || line[0] == '#' {
@@ -348,6 +337,19 @@ func (hac *HAProxySettings) UpdateBackends(configuration *HAProxyConfiguration) 
 		}
 		current_backends[parts[0]][parts[1]] = parts[17]
 	}
+
+	return current_backends, err
+}
+
+func (hac *HAProxySettings) UpdateBackends(configuration *HAProxyConfiguration) (bool, error) {
+
+	current_backends, err := hac.GetHaproxyBackends()
+	if err != nil {
+		return true, nil
+	}
+
+	enabled_backends := make(map[string]bool)
+	total_backends := 0
 
 	//fmt.Printf("current backends: %+v\n", current_backends)
 
@@ -370,12 +372,13 @@ func (hac *HAProxySettings) UpdateBackends(configuration *HAProxyConfiguration) 
 
 	for section_name, section_backends := range current_backends {
 		for backend, backend_status := range section_backends {
+			total_backends++
 			command := ""
 			if _, ok := enabled_backends[backend]; ok == true {
 				if backend_status == "MAINT" {
 					command = "enable server " + section_name + "/" + backend + "\n"
 				}
-			} else {
+			} else if strings.Index(backend, "nocheck-") == -1 { // having "nocheck-" prefix on backend server name prevents orbit from disabling the backend
 				if backend_status != "MAINT" {
 					command = "disable server " + section_name + "/" + backend + "\n"
 				}
@@ -410,6 +413,16 @@ func (hac *HAProxySettings) UpdateBackends(configuration *HAProxyConfiguration) 
 			if err != nil {
 				return true, err
 			}
+		}
+	}
+
+	if total_backends > 0 {
+		enabled_servers_percenet := float32(len(enabled_backends)) / float32(total_backends)
+
+		// Restart haproxy if there's more than 30% of the backends are down
+		if enabled_servers_percenet < 0.7 {
+			fmt.Fprintf(os.Stderr, "Restarting haproxy because less than %.f%% servers are up (%d enabled backends, %d total backends)\n", enabled_servers_percenet*100, len(enabled_backends), total_backends)
+			return true, nil
 		}
 	}
 
