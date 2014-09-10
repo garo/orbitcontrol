@@ -49,7 +49,7 @@ type BackendParametersByNickname []BackendParameters
 
 func (a BackendParametersByNickname) Len() int { return len(a) }
 func (a BackendParametersByNickname) Swap(i, j int) {
-	a[i].Nickname, a[j].Nickname = a[j].Nickname, a[i].Nickname
+	a[i], a[j] = a[j], a[i]
 }
 func (a BackendParametersByNickname) Less(i, j int) bool { return a[i].Nickname < a[j].Nickname }
 
