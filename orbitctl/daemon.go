@@ -23,7 +23,7 @@ func init() {
 	cmdDaemon.Flags.StringVar(&containrunnerInstance.HAProxySettings.HAProxyConfigName, "haproxy-config-name", "haproxy.cfg", "Name of the generated haproxy config file")
 	cmdDaemon.Flags.StringVar(&containrunnerInstance.HAProxySettings.HAProxyBinary, "haproxy-binary", "/usr/sbin/haproxy", "Full path to haproxy binary")
 	cmdDaemon.Flags.StringVar(&containrunnerInstance.HAProxySettings.HAProxyReloadCommand, "haproxy-reload-command", "/etc/init.d/haproxy reload", "Command to reload haproxy")
-	cmdDaemon.Flags.StringVar(&containrunnerInstance.HAProxySettings.HAProxySocket, "haproxy-socket", "/var/run/haproxy/admin.sock", "HAProxy admin socket")
+	cmdDaemon.Flags.StringVar(&containrunnerInstance.HAProxySettings.HAProxySocket, "haproxy-socket", "/var/run/haproxy/admin*.sock", "HAProxy admin socket. Can use wildcards to contact multiple sockets when haproxy uses nbproc > 1")
 	cmdDaemon.Flags.StringVar(&machineTags, "machine-tags", "", "Comma separated list of tags this machine belongs to")
 }
 

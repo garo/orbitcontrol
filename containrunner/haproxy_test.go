@@ -34,7 +34,9 @@ func (s *HAProxySuite) TestConvergeHAProxy(c *C) {
 	moc := ConfigBridgeInterfaceMock{
 		func(service_name string) (map[string]*EndpointInfo, error) {
 			endpoints := make(map[string]*EndpointInfo)
+			endpoints["10.0.0.3:80"] = &EndpointInfo{}
 			endpoints["10.0.0.1:80"] = &EndpointInfo{}
+			endpoints["10.0.0.2:80"] = &EndpointInfo{}
 			return endpoints, nil
 		},
 	}
@@ -49,8 +51,8 @@ defaults
 listen test 127.0.0.1:80
 	mode http
 {{range Endpoints "test"}}
-	server {{.Nickname}} {{.HostPort}}
-{{end}}
+	server {{.Nickname}} {{.HostPort}}{{end}}
+
 `
 
 	_, err := os.Stat("/tmp/haproxy-test-config.cfg")
@@ -76,6 +78,8 @@ listen test 127.0.0.1:80
 	mode http
 
 	server test-10.0.0.1:80 10.0.0.1:80
+	server test-10.0.0.2:80 10.0.0.2:80
+	server test-10.0.0.3:80 10.0.0.3:80
 
 `)
 
@@ -596,4 +600,71 @@ func (s *HAProxySuite) TestUpdateBackendsNoCheck(c *C) {
 	default:
 		c.Assert(true, Equals, true)
 	}
+}
+
+func (s *HAProxySuite) TestUpdateMultipleBackends(c *C) {
+	fmt.Println("****** TestUpdateBackendsNoCheck")
+	var settings HAProxySettings
+	settings.HAProxySocket = "/tmp/sock_srv*.sock"
+	configuration := NewHAProxyConfiguration()
+
+	backends := make(map[string]*EndpointInfo)
+	backends["172.16.2.159:3500"] = &EndpointInfo{}
+	backends["172.16.2.160:3500"] = &EndpointInfo{}
+	backends["172.16.2.161:3500"] = &EndpointInfo{}
+	configuration.ServiceBackends["comet"] = backends
+
+	// Channel to get the haproxy status socket commands from our haproxy fake server into the test
+	commands := make(chan string, 5)
+
+	ln1, err := net.Listen("unix", "/tmp/sock_srv1.sock")
+	if err != nil {
+		panic(err)
+	}
+	defer os.Remove("/tmp/sock_srv1.sock")
+	defer ln1.Close()
+
+	ln2, err := net.Listen("unix", "/tmp/sock_srv2.sock")
+	if err != nil {
+		panic(err)
+	}
+	defer os.Remove("/tmp/sock_srv2.sock")
+	defer ln2.Close()
+
+	fnc := func(ln net.Listener) {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			defer c.Close()
+			reader := bufio.NewReader(c)
+			msg, err := reader.ReadBytes('\n')
+			commands <- string(msg)
+			fmt.Printf("Got command: %s", string(msg))
+
+			if string(msg) == "show stat\n" {
+				c.Write([]byte("comet,FRONTEND,,,0,0,8000,0,0,0,0,0,0,,,,,OPEN,,,,,,,,,1,2,0,,,,0,0,0,0,,,,0,0,0,0,0,0,,0,0,0,,,0,0,0,0,,,,,,,,\n"))
+				c.Write([]byte("comet,comet-172.16.2.159:3500,0,0,0,0,,0,0,0,,0,,0,0,0,0,DOWN,1,1,0,1,1,4,4,,1,2,2,,0,,2,0,,0,L4TOUT,,2002,0,0,0,0,0,0,0,,,,0,0,,,,,-1,,,0,0,0,0,\n"))
+				c.Write([]byte("comet,comet-172.16.2.160:3500,0,0,0,0,,0,0,0,,0,,0,0,0,0,DOWN,1,1,0,1,1,4,4,,1,2,2,,0,,2,0,,0,L4TOUT,,2002,0,0,0,0,0,0,0,,,,0,0,,,,,-1,,,0,0,0,0,\n"))
+				c.Write([]byte("comet,comet-172.16.2.161:3500,0,0,0,0,,0,0,0,,0,,0,0,0,0,DOWN,1,1,0,1,1,4,4,,1,2,2,,0,,2,0,,0,L4TOUT,,2002,0,0,0,0,0,0,0,,,,0,0,,,,,-1,,,0,0,0,0,\n"))
+				c.Write([]byte("comet,comet-172.16.2.162:3500,0,0,0,0,,0,0,0,,0,,0,0,0,0,DOWN,1,1,0,1,1,4,4,,1,2,2,,0,,2,0,,0,L4TOUT,,2002,0,0,0,0,0,0,0,,,,0,0,,,,,-1,,,0,0,0,0,\n"))
+				c.Write([]byte("comet,BACKEND,0,0,0,0,800,0,0,0,0,0,,0,0,0,0,DOWN,0,0,0,,1,4,4,,1,2,0,,0,,1,0,,0,,,,0,0,0,0,0,0,,,,,0,0,0,0,0,0,-1,,,0,0,0,0,\n"))
+			}
+			c.Close()
+		}
+	}
+
+	go fnc(ln1)
+	go fnc(ln2)
+
+	restart_required, err := settings.UpdateBackends(configuration)
+
+	c.Assert(err, IsNil)
+	c.Assert(restart_required, Equals, false)
+
+	c.Assert(<-commands, Equals, "show stat\n")
+	c.Assert(<-commands, Equals, "disable server comet/comet-172.16.2.162:3500\n")
+	c.Assert(<-commands, Equals, "disable server comet/comet-172.16.2.162:3500\n")
+
 }

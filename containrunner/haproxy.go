@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -296,8 +297,40 @@ func (hac *HAProxySettings) GetNewConfig(cbi ConfigBridgeInterface, configuratio
 	return output.String(), nil
 }
 
+func runHAProxyCommand(command string, socket_name string) error {
+	c, err := net.Dial("unix", socket_name)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error opening HAProxy socket. Error: %+v\n", err)
+		if c != nil {
+			c.Close()
+		}
+		return err
+	}
+	defer c.Close()
+
+	_, err = c.Write([]byte(command))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error on stat command '%s'. Error: %+v\n", command, err)
+		return err
+	}
+
+	//fmt.Fprintf(os.Stderr, "running command to socket %s. Command: %s", socket_name, command)
+
+	return nil
+}
+
 func (hac *HAProxySettings) GetHaproxyBackends() (current_backends map[string]map[string]string, err error) {
-	c, err := net.Dial("unix", hac.HAProxySocket)
+	sockets, err := filepath.Glob(hac.HAProxySocket)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error finding haproxy sockets from path %s: %+v\n", hac.HAProxySocket, err)
+	}
+
+	if len(sockets) == 0 {
+		fmt.Fprintf(os.Stderr, "Could not find haproxy socket(s) from %s\n", hac.HAProxySocket)
+		return nil, nil
+	}
+
+	c, err := net.Dial("unix", sockets[0])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening HAProxy socket. Error: %+v\n", err)
 		if c != nil {
@@ -390,28 +423,16 @@ func (hac *HAProxySettings) UpdateBackends(configuration *HAProxyConfiguration) 
 
 			fmt.Printf("executing command: %s", command)
 
-			err := func(command string, socket_name string) error {
-				c, err := net.Dial("unix", socket_name)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error opening HAProxy socket. Error: %+v\n", err)
-					if c != nil {
-						c.Close()
-					}
-					return err
-				}
-				defer c.Close()
-
-				_, err = c.Write([]byte(command))
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error on show stat command. Error: %+v\n", err)
-					return err
-				}
-
-				return nil
-			}(command, hac.HAProxySocket)
-
+			sockets, err := filepath.Glob(hac.HAProxySocket)
 			if err != nil {
-				return true, err
+				fmt.Fprintf(os.Stderr, "Error finding haproxy sockets from path %s: %+v\n", hac.HAProxySocket, err)
+			}
+
+			for _, socket_name := range sockets {
+				runHAProxyCommand(command, socket_name)
+				if err != nil {
+					return true, err
+				}
 			}
 		}
 	}
