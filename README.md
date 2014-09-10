@@ -1,7 +1,7 @@
 orbitcontrol
 ============
 
-Orbit Control is a toolset to run containers in distributed set of machines.
+Orbit Control is a toolset to run containers in distributed set of machines, dynamically configure haproxies and run health checks for services.
 
 Features
 ========
