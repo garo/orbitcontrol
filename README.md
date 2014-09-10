@@ -3,6 +3,16 @@ orbitcontrol
 
 Orbit Control is a toolset to run containers in distributed set of machines.
 
+Features
+========
+ - Launch Docker Containers into machines defined by tags
+ - Supports health checks for services across a set of machines defined by tags
+ - Configures haproxies so that they can route requests to these services
+ - Full support of ephemeral machines (think of autoscaling arrays in the cloud)
+ - Uses etcd to store run-time configuration.
+ - Can easily use Git or other SCM to store the configuration so that history can be fully stored, also forms as a DR solution if the etcd cluster is lost.
+ - Written in Go, only single binary needs to be deployed to machines.
+
 Introduction
 ============
 
