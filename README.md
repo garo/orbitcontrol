@@ -34,3 +34,16 @@ Dependencies
 Orbit control is created with the Go language. This makes deployment really easy because only a single statically linked binary needs to be distributed to each machine. Only external dependency is the etcd configuration service.
 
 In addition you mostly likely want to use haproxy and docker. 
+
+Installation
+============
+
+These are rough installation instructions. Notice that orbitctl is not yet production quality.
+
+1) Setup etcd cluster or use an existing. Orbitctl will place its data under /orbit directory by default.
+2) Setup Git or other SCM where you store your orbit configuration. Example configuration can be found under the testdata/ directory.
+3) Build the orbictl command with "make" command.
+4) After editing the configurations use the <em>orbitctl import</em> command to import the configuration into etcd. Usually when you want to edit the configuration you first make changes to the files, commit them into Git and then run the orbitctl import.
+5) Deploy the orbitctl binary to your machines. You can use Chef, Puppet or any other tool you are comfortable with. 6) Start the orbitctl on the machines with these arguments (modify to suit your taste): "--etcd-endpoint=[server1],[server2] daemon --machine-address=[machine internal ip] --machine-tags=tag1,tag2". There's an example upstart script under upstart directory.
+
+That's it. Orbitctls should now be running on your machines and they should start the containers you have specified and also configure the haproxies to each machine which you have specified in the configuration.
