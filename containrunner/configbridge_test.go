@@ -131,6 +131,70 @@ Content-Type: text/html
 
 }
 
+func (s *ConfigBridgeSuite) TestMergeServiceConfig(c *C) {
+	defaults := new(ServiceConfiguration)
+	overwrite := new(ServiceConfiguration)
+
+	json.Unmarshal([]byte(`
+{
+	"Name": "comet",
+	"Container" : {
+		"HostConfig" : {
+			"Binds": [
+				"/tmp:/data"
+			],
+			"NetworkMode" : "host"
+		},
+		"Config": {
+			"Env": [
+				"FOO=BAR",
+				"NODE_ENV=production"
+			],
+			"AttachStderr": false,
+			"AttachStdin": false,
+			"AttachStdout": false,
+			"OpenStdin": false,
+			"Hostname": "comet",
+			"Image": "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+		}
+	},
+	"checks" : [
+		{
+			"type" : "http",
+			"url" : "http://localhost:3500/check"
+		}
+	]
+}
+`), defaults)
+
+	json.Unmarshal([]byte(`
+{
+	"Container" : {
+		"Config": {
+			"Env": [
+				"NODE_ENV=staging"
+			],
+			"Image":"registry.applifier.info:5000/comet:latest",
+			"Hostname": "comet-test"
+		}
+	}
+}
+`), overwrite)
+
+	var containrunner Containrunner
+
+	err := containrunner.MergeServiceConfig(defaults, *overwrite)
+	c.Assert(err, Equals, nil)
+
+	c.Assert(defaults.Name, Equals, "comet")
+	c.Assert(defaults.Container.HostConfig.Binds[0], Equals, "/tmp:/data")
+	c.Assert(defaults.Container.Config.Env[0], Equals, "FOO=BAR")
+	c.Assert(defaults.Container.Config.Env[1], Equals, "NODE_ENV=staging")
+	c.Assert(defaults.Container.Config.Image, Equals, "registry.applifier.info:5000/comet:latest")
+	c.Assert(defaults.Container.Config.Hostname, Equals, "comet-test")
+
+}
+
 func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTags(c *C) {
 
 	_, err := s.etcd.CreateDir("/machineconfigurations/tags/testtag/", 10)
@@ -146,7 +210,7 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTags(c *C) {
 			"Binds": [
 				"/tmp:/data"
 			],
-			"NetworkMode" : "host"				
+			"NetworkMode" : "host"
 		},
 		"Config": {
 			"Env": [
@@ -231,6 +295,115 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTags(c *C) {
 
 }
 
+func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTagsWithOverwrittenParameters(c *C) {
+
+	_, err := s.etcd.CreateDir("/machineconfigurations/tags/testtag/", 10)
+	if err != nil {
+		s.etcd.DeleteDir("/machineconfigurations/tags/testtag/")
+	}
+
+	var comet = `
+{
+	"Name": "comet",
+	"Container" : {
+		"HostConfig" : {
+			"Binds": [
+				"/tmp:/data"
+			],
+			"NetworkMode" : "host"				
+		},
+		"Config": {
+			"Env": [
+				"NODE_ENV=production"
+			],
+			"AttachStderr": false,
+			"AttachStdin": false,
+			"AttachStdout": false,
+			"OpenStdin": false,
+			"Hostname": "comet",
+			"Image": "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+		}
+	},
+	"checks" : [
+		{
+			"type" : "http",
+			"url" : "http://localhost:3500/check"
+		}
+	]
+}
+`
+	_, err = s.etcd.Set("/services/comet/config", comet, 10)
+	if err != nil {
+		panic(err)
+	}
+
+	revision := `
+{
+	"Revision" : "asdf"
+}`
+
+	_, err = s.etcd.Set("/services/comet/revision", revision, 10)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/services/comet", `
+{
+	"Container" : {
+		"Config": {
+			"Env": [
+				"NODE_ENV=staging"
+			]
+		}
+	}
+}`, 10)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/authoritative_names", `["registry.applifier.info:5000/comet"]`, 10)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/haproxy_config", "foobar", 10)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = s.etcd.CreateDir("/machineconfigurations/tags/testtag/haproxy_files", 10)
+	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/haproxy_files/hello.txt", "hello", 10)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/certs/test.pem", "----TEST-----", 10)
+	if err != nil {
+		panic(err)
+	}
+
+	tags := []string{"testtag"}
+	var containrunner Containrunner
+	configuration, err := containrunner.GetMachineConfigurationByTags(s.etcd, tags)
+
+	c.Assert(configuration.Services["comet"].Name, Equals, "comet")
+	c.Assert(configuration.Services["comet"].Container.HostConfig.NetworkMode, Equals, "host")
+	c.Assert(configuration.Services["comet"].Container.Config.AttachStderr, Equals, false)
+	c.Assert(configuration.Services["comet"].Container.Config.Env[0], Equals, "NODE_ENV=staging")
+	c.Assert(configuration.Services["comet"].Container.Config.Hostname, Equals, "comet")
+	c.Assert(configuration.Services["comet"].Container.Config.Image, Equals, "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2")
+	c.Assert(configuration.Services["comet"].Checks[0].Type, Equals, "http")
+	c.Assert(configuration.Services["comet"].Checks[0].Url, Equals, "http://localhost:3500/check")
+
+	c.Assert(configuration.HAProxyConfiguration.Template, Equals, "foobar")
+	c.Assert(configuration.HAProxyConfiguration.Certs["test.pem"], Equals, "----TEST-----")
+	c.Assert(configuration.HAProxyConfiguration.Files["hello.txt"], Equals, "hello")
+
+	c.Assert(configuration.Services["comet"].Revision.Revision, Equals, "asdf")
+
+	_, _ = s.etcd.DeleteDir("/machineconfigurations/tags/testtag/")
+
+}
 func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherServiceOk(c *C) {
 
 	crep := ConfigResultEtcdPublisher{5, "/test", nil, s.etcd}

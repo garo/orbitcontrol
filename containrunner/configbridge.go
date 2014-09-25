@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"sort"
 	"strings"
 	"time"
 )
@@ -95,7 +96,7 @@ type ServiceStateChangeEvent struct {
 
 func (c *ConfigResultEtcdPublisher) PublishServiceState(serviceName string, endpoint string, ok bool, info *EndpointInfo) {
 	if c.etcd == nil {
-		fmt.Fprintf(os.Stderr, "Creating new Etcd client so that we can report that service %s at %s is %+v\n", serviceName, endpoint, ok)
+		fmt.Fprintf(os.Stderr, "Creating new Etcd client (%+v) so that we can report that service %s at %s is %+v\n", c.EtcdEndpoints, serviceName, endpoint, ok)
 		c.etcd = GetEtcdClient(c.EtcdEndpoints)
 		fmt.Fprintf(os.Stderr, "Client created\n")
 
@@ -255,6 +256,7 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *OrbitConfiguration, etcdClient *etcd.Client) error {
 	if etcdClient == nil {
 		etcdClient = GetEtcdClient(c.EtcdEndpoints)
+		fmt.Fprintf(os.Stderr, "EtcdEndpoints: %s\n", c.EtcdEndpoints)
 	}
 
 	for tag, mc := range orbitConfiguration.MachineConfigurations {
@@ -440,6 +442,52 @@ func (c *Containrunner) GetKnownTags() ([]string, error) {
 	return tags, nil
 }
 
+func (c *Containrunner) MergeServiceConfig(dst *ServiceConfiguration, overwrite ServiceConfiguration) error {
+
+	if overwrite.Container != nil {
+		if &overwrite.Container.Config != nil {
+			if &overwrite.Container.Config.Env != nil {
+				if &dst.Container.Config.Env == nil {
+					dst.Container.Config.Env = overwrite.Container.Config.Env
+				} else {
+					env := make(map[string]string)
+					for _, e := range dst.Container.Config.Env {
+						parts := strings.Split(e, "=")
+						env[parts[0]] = parts[1]
+					}
+
+					for _, e := range overwrite.Container.Config.Env {
+						parts := strings.Split(e, "=")
+						env[parts[0]] = parts[1]
+					}
+
+					dst.Container.Config.Env = make([]string, len(env))
+					i := 0
+					for k, v := range env {
+						dst.Container.Config.Env[i] = (k + "=" + v)
+						i++
+					}
+
+					sort.Strings(dst.Container.Config.Env)
+					fmt.Fprintf(os.Stderr, "new env: %+v\n", dst.Container.Config.Env)
+
+				}
+			}
+
+			if overwrite.Container.Config.Image != "" {
+				dst.Container.Config.Image = overwrite.Container.Config.Image
+			}
+
+			if overwrite.Container.Config.Hostname != "" {
+				dst.Container.Config.Hostname = overwrite.Container.Config.Hostname
+			}
+
+		}
+	}
+
+	return nil
+}
+
 func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []string) (MachineConfiguration, error) {
 
 	var configuration MachineConfiguration
@@ -465,12 +513,28 @@ func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []
 					configuration.Services = make(map[string]ServiceConfiguration, len(node.Nodes))
 				}
 
-				for _, service := range node.Nodes {
-					if service.Dir == false {
-						name := string(service.Key[len(node.Key)+1:])
+				for _, serviceNode := range node.Nodes {
+					if serviceNode.Dir == false {
+						name := string(serviceNode.Key[len(node.Key)+1:])
+
+						// The GetServiceByName creates completly new ServiceConfiguration instance
+						// So it's later safe to use MergeServiceConfig to modify it (it's not shared between machines or anything)
 						service, err := c.GetServiceByName(name, etcd)
 						if err != nil {
+							fmt.Fprintf(os.Stderr, "Error getting service %s: %+v\n", name, err)
 							return configuration, err
+						}
+
+						if serviceNode.Value != "" && serviceNode.Value != "{}" {
+							var overwrite ServiceConfiguration
+							err = json.Unmarshal([]byte(serviceNode.Value), &overwrite)
+							fmt.Fprintf(os.Stderr, "OVERWRITE: %+v\n", overwrite)
+
+							if err == nil {
+								c.MergeServiceConfig(&service, overwrite)
+							} else {
+								fmt.Fprintf(os.Stderr, "Error reading overwrite config for service %s: error: %+v\n.Service overwrite data was: %s\n", name, err, serviceNode.Value)
+							}
 						}
 						configuration.Services[name] = service
 					}
