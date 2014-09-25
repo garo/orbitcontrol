@@ -163,21 +163,24 @@ func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
 	var imageRegexp = regexp.MustCompile("(.+):")
 	for _, container := range existing_containers {
 		m := imageRegexp.FindStringSubmatch(container.Image)
-		image := m[1]
+		if len(m) == 0 {
+			fmt.Printf("Invalid string submatch for container.Image %s\n", container.Image)
+		} else {
+			image := m[1]
 
-		for _, authoritative_name := range conf.AuthoritativeNames {
-			if authoritative_name == image {
-				log.Info(LogEvent(ContainerLogEvent{"stop-and-remove", container.Container.Image, container.Container.Name}))
+			for _, authoritative_name := range conf.AuthoritativeNames {
+				if authoritative_name == image {
+					log.Info(LogEvent(ContainerLogEvent{"stop-and-remove", container.Container.Image, container.Container.Name}))
 
-				fmt.Printf("Found container %+v which we are authoritative but its running. Going to stop it...\n", container)
-				client.StopContainer(container.Container.ID, 10)
-				err = client.RemoveContainer(docker.RemoveContainerOptions{container.Container.ID, true, true})
-				if err != nil {
-					panic(err)
+					fmt.Printf("Found container %+v which we are authoritative but its running. Going to stop it...\n", container)
+					client.StopContainer(container.Container.ID, 10)
+					err = client.RemoveContainer(docker.RemoveContainerOptions{container.Container.ID, true, true})
+					if err != nil {
+						panic(err)
+					}
 				}
 			}
 		}
-
 	}
 
 	for _, container := range ready_for_launch {
