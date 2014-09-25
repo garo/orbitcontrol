@@ -154,11 +154,14 @@ func runService(args []string) (exit int) {
 
 		diff := time.Since(time.Unix(last_update, 0))
 		fmt.Printf("The container %s you are about to deploy was last updated at %s ago\n", revision, diff)
-		fmt.Printf("Are you sure you want to deploy %s with this revision into production? (y/N) ", name)
-		bytes, _ := reader.ReadBytes('\n')
-		if bytes[0] != 'y' && bytes[0] != 'Y' {
-			fmt.Printf("Abort!\n")
-			return 1
+
+		if globalFlags.Force == false {
+			fmt.Printf("Are you sure you want to deploy %s with this revision into production? (y/N) ", name)
+			bytes, _ := reader.ReadBytes('\n')
+			if bytes[0] != 'y' && bytes[0] != 'Y' {
+				fmt.Printf("Abort!\n")
+				return 1
+			}
 		}
 
 		var serviceRevision = containrunner.ServiceRevision{

@@ -33,6 +33,7 @@ var (
 		Debug        bool
 		EtcdEndpoint string
 		EtcdBasePath string
+		Force        bool
 	}{}
 
 	containrunnerInstance containrunner.Containrunner
@@ -63,6 +64,7 @@ func init() {
 	}
 
 	globalFlagset.BoolVar(&globalFlags.Debug, "debug", false, "Print out more debug information to stderr")
+	globalFlagset.BoolVar(&globalFlags.Force, "force", false, "Force, don't ask questions")
 	globalFlagset.StringVar(&globalFlags.EtcdEndpoint, "etcd-endpoint", "http://etcd:4001", "Etcd server endpoint as http://host:port[,http://host:port] string")
 	globalFlagset.StringVar(&globalFlags.EtcdBasePath, "etcd-base-path", "/orbit", "Keyspace for orbit control data in etcd")
 
