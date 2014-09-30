@@ -128,7 +128,7 @@ func runService(args []string) (exit int) {
 
 			if serviceConfiguration.GetRevision() == revision {
 				fmt.Printf("Service %s is already at revision %s\n", name, revision)
-				return 1
+				return 0
 			} else if serviceConfiguration.Revision != nil {
 				fmt.Printf("Previous revision: %s\n", serviceConfiguration.Revision.Revision)
 			} else {
