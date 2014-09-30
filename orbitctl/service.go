@@ -139,6 +139,11 @@ func runService(args []string) (exit int) {
 			fmt.Printf("Warning! Unable to get source control information on revision. SourceControl data not set for service\n")
 		}
 
+		if serviceConfiguration.Container == nil {
+			fmt.Printf("Error! The service %s configuration in incomplete! Missign Container data\n", name)
+			return 1
+		}
+
 		fmt.Printf("Setting service %s revision to %s\n", name, revision)
 		fmt.Printf("\n")
 
