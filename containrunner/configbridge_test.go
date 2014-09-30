@@ -127,7 +127,21 @@ Content-Type: text/html
 
 	res, err = s.etcd.Get("/test/machineconfigurations/tags/testtag/services/comet", true, true)
 	c.Assert(err, IsNil)
-	c.Assert(res.Node.Value, Equals, "{}")
+
+	expected := "" +
+		"{\n" +
+		"\t\"Container\" : {\n" +
+		"\t\t\"Config\": {\n" +
+		"\t\t\t\"Env\": [\n" +
+		"\t\t\t\t\"NODE_ENV=staging\"\n" +
+		"\t\t\t],\n" +
+		"\t\t\t\"Image\":\"registry.applifier.info:5000/comet:latest\",\n" +
+		"\t\t\t\"Hostname\": \"comet-test\"\n" +
+		"\t\t}\n" +
+		"\t}\n" +
+		"}\n" +
+		"\n"
+	c.Assert(res.Node.Value, Equals, expected)
 
 }
 

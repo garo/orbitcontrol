@@ -39,6 +39,7 @@ type OrbitConfiguration struct {
 // Represents a single tag inside a /orbit/machineconfiguration/
 type TagConfiguration struct {
 	Services             map[string]ServiceConfiguration `json:"services"`
+	ServiceOverwrites    map[string]string               `json:"service_overwrites"`
 	HAProxyConfiguration *HAProxyConfiguration
 	AuthoritativeNames   []string `json:"authoritative_names"`
 }
@@ -169,6 +170,7 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 
 		var mc MachineConfiguration
 		mc.Services = make(map[string]ServiceConfiguration)
+		mc.ServiceOverwrites = make(map[string]string)
 		var bytes []byte
 
 		fname := startpath + "/machineconfigurations/tags/" + tag.Name() + "/haproxy.tpl"
@@ -243,6 +245,8 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 				}
 				mc.Services[service_name] = service
 
+				mc.ServiceOverwrites[service_name] = string(bytes)
+
 			}
 		}
 
@@ -294,7 +298,13 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 		}
 
 		for name, _ := range mc.Services {
-			_, err := etcdClient.Set(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/services/"+name, "{}", 0)
+			str := "{}"
+			overwrite, found := mc.ServiceOverwrites[name]
+			if found {
+				str = overwrite
+			}
+
+			_, err := etcdClient.Set(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/services/"+name, str, 0)
 			if err != nil {
 				return err
 			}
@@ -469,7 +479,6 @@ func (c *Containrunner) MergeServiceConfig(dst *ServiceConfiguration, overwrite 
 					}
 
 					sort.Strings(dst.Container.Config.Env)
-					fmt.Fprintf(os.Stderr, "new env: %+v\n", dst.Container.Config.Env)
 
 				}
 			}
@@ -528,7 +537,6 @@ func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []
 						if serviceNode.Value != "" && serviceNode.Value != "{}" {
 							var overwrite ServiceConfiguration
 							err = json.Unmarshal([]byte(serviceNode.Value), &overwrite)
-							fmt.Fprintf(os.Stderr, "OVERWRITE: %+v\n", overwrite)
 
 							if err == nil {
 								c.MergeServiceConfig(&service, overwrite)
