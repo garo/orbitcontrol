@@ -125,17 +125,18 @@ func runService(args []string) (exit int) {
 					revision = *commit.SHA
 				}
 			}
+
+			if serviceConfiguration.GetRevision() == revision {
+				fmt.Printf("Service %s is already at revision %s\n", name, revision)
+				return 1
+			} else if serviceConfiguration.Revision != nil {
+				fmt.Printf("Previous revision: %s\n", serviceConfiguration.Revision.Revision)
+			} else {
+				fmt.Printf("Service %s previously had no dynamic revision!\nStatic revision is: %s\n", name, containrunner.GetContainerImageNameWithRevision(serviceConfiguration, ""))
+			}
+
 		} else {
 			fmt.Printf("Warning! Unable to get source control information on revision. SourceControl data not set for service\n")
-		}
-
-		if serviceConfiguration.GetRevision() == revision {
-			fmt.Printf("Service %s is already at revision %s\n", name, revision)
-			return 1
-		} else if serviceConfiguration.Revision != nil {
-			fmt.Printf("Previous revision: %s\n", serviceConfiguration.Revision.Revision)
-		} else {
-			fmt.Printf("Service %s previously had no dynamic revision!\nStatic revision is: %s\n", name, containrunner.GetContainerImageNameWithRevision(serviceConfiguration, ""))
 		}
 
 		fmt.Printf("Setting service %s revision to %s\n", name, revision)
