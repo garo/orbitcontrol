@@ -454,6 +454,10 @@ func (c *Containrunner) GetKnownTags() ([]string, error) {
 
 func (c *Containrunner) MergeServiceConfig(dst *ServiceConfiguration, overwrite ServiceConfiguration) error {
 
+	if overwrite.EndpointPort != 0 {
+		dst.EndpointPort = overwrite.EndpointPort
+	}
+
 	if overwrite.Container != nil {
 		if &overwrite.Container.Config != nil {
 			if &overwrite.Container.Config.Env != nil {
@@ -492,6 +496,12 @@ func (c *Containrunner) MergeServiceConfig(dst *ServiceConfiguration, overwrite 
 			}
 
 		}
+	}
+
+	// If any check is defined in the overwrite settings then the entire overwrite checks rule array
+	// will overwrite the default. ie. we don't try to merge these together.
+	if overwrite.Checks != nil {
+		dst.Checks = overwrite.Checks
 	}
 
 	return nil

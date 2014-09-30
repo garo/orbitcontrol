@@ -152,6 +152,7 @@ func (s *ConfigBridgeSuite) TestMergeServiceConfig(c *C) {
 	json.Unmarshal([]byte(`
 {
 	"Name": "comet",
+	"EndpointPort" : 80,
 	"Container" : {
 		"HostConfig" : {
 			"Binds": [
@@ -183,6 +184,7 @@ func (s *ConfigBridgeSuite) TestMergeServiceConfig(c *C) {
 
 	json.Unmarshal([]byte(`
 {
+	"EndpointPort" : 8002,
 	"Container" : {
 		"Config": {
 			"Env": [
@@ -191,7 +193,13 @@ func (s *ConfigBridgeSuite) TestMergeServiceConfig(c *C) {
 			"Image":"registry.applifier.info:5000/comet:latest",
 			"Hostname": "comet-test"
 		}
-	}
+	},
+	"checks" : [
+		{
+			"type" : "http",
+			"url" : "http://localhost:8002/check"
+		}
+	]
 }
 `), overwrite)
 
@@ -201,11 +209,14 @@ func (s *ConfigBridgeSuite) TestMergeServiceConfig(c *C) {
 	c.Assert(err, Equals, nil)
 
 	c.Assert(defaults.Name, Equals, "comet")
+	c.Assert(defaults.EndpointPort, Equals, 8002)
 	c.Assert(defaults.Container.HostConfig.Binds[0], Equals, "/tmp:/data")
 	c.Assert(defaults.Container.Config.Env[0], Equals, "FOO=BAR")
 	c.Assert(defaults.Container.Config.Env[1], Equals, "NODE_ENV=staging")
 	c.Assert(defaults.Container.Config.Image, Equals, "registry.applifier.info:5000/comet:latest")
 	c.Assert(defaults.Container.Config.Hostname, Equals, "comet-test")
+	c.Assert(defaults.Checks[0].Type, Equals, "http")
+	c.Assert(defaults.Checks[0].Url, Equals, "http://localhost:8002/check")
 
 }
 
