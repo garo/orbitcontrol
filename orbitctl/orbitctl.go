@@ -62,6 +62,7 @@ func init() {
 		cmdTag,
 		cmdService,
 		cmdVerify,
+		cmdEndpoints,
 	}
 
 	globalFlagset.BoolVar(&globalFlags.Debug, "debug", false, "Print out more debug information to stderr")

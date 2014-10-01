@@ -32,8 +32,17 @@ func runEndpoints(args []string) (exit int) {
 		fmt.Fprintf(os.Stderr, "Error: %+v\n", err)
 		return 1
 	} else {
-		for _, endpoint := range endpoints {
-			fmt.Printf("service %s endpoint at %s", service, endpoint)
+		for endpoint, endpointInfo := range endpoints {
+			if endpointInfo != nil && endpointInfo.Revision != "" {
+				fmt.Printf("service %s endpoint at %-22s running revision %s\n", service, endpoint, endpointInfo.Revision)
+			} else {
+				fmt.Printf("service %s endpoint at %s\n", service, endpoint)
+			}
+		}
+
+		if len(endpoints) == 0 {
+			fmt.Fprintf(os.Stderr, "No endpoints running for service %s!\n", service)
+			return 1
 		}
 	}
 
