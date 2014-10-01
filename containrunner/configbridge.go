@@ -1,6 +1,8 @@
 package containrunner
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,8 +40,7 @@ type OrbitConfiguration struct {
 
 // Represents a single tag inside a /orbit/machineconfiguration/
 type TagConfiguration struct {
-	Services             map[string]ServiceConfiguration `json:"services"`
-	ServiceOverwrites    map[string]string               `json:"service_overwrites"`
+	Services             map[string]BoundService `json:"services"`
 	HAProxyConfiguration *HAProxyConfiguration
 	AuthoritativeNames   []string `json:"authoritative_names"`
 }
@@ -47,11 +48,26 @@ type TagConfiguration struct {
 // Represents all configurations for a single physical machine.
 // Because all tags are unioned into one this can be represented
 // with just a single unioned TagConfiguration but its kept as a separated
-// type
+// type for now
 type MachineConfiguration struct {
 	TagConfiguration
 }
 
+// This defines a service which has been bound to a machine with a tag
+// A bound service can overwrite its default service configuration.
+//
+// The DefaultConfiguration is a pointer to OrbitConfiguration.Services[name]
+// and the actual runtime configuration is created by merging these two together.
+type BoundService struct {
+	DefaultConfiguration ServiceConfiguration
+	Overwrites           *ServiceConfiguration
+
+	cachedMergedConfig *ServiceConfiguration
+}
+
+// This represents a default configuration for a single service which is global
+// for the entire Orbit deployment. These services can be bound into a set of
+// machines using tags and this bind is represented with the BoundService structure above.
 type ServiceConfiguration struct {
 	Name          string
 	EndpointPort  int
@@ -93,6 +109,20 @@ type ServiceStateChangeEvent struct {
 	ServiceName string
 	Endpoint    string
 	IsUp        bool
+}
+
+func (c BoundService) GetConfig() ServiceConfiguration {
+	if c.cachedMergedConfig != nil {
+		return *(c.cachedMergedConfig)
+	}
+
+	if c.Overwrites != nil {
+		tmp := MergeServiceConfig(c.DefaultConfiguration, *c.Overwrites)
+		c.cachedMergedConfig = &tmp
+		return *(c.cachedMergedConfig)
+	}
+
+	return c.DefaultConfiguration
 }
 
 func (c *ConfigResultEtcdPublisher) PublishServiceState(serviceName string, endpoint string, ok bool, info *EndpointInfo) {
@@ -169,8 +199,7 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 		}
 
 		var mc MachineConfiguration
-		mc.Services = make(map[string]ServiceConfiguration)
-		mc.ServiceOverwrites = make(map[string]string)
+		mc.Services = make(map[string]BoundService)
 		var bytes []byte
 
 		fname := startpath + "/machineconfigurations/tags/" + tag.Name() + "/haproxy.tpl"
@@ -230,12 +259,18 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 				fname := startpath + "/machineconfigurations/tags/" + tag.Name() + "/services/" + file.Name()
 				service_name := file.Name()[0 : len(file.Name())-5]
 
+				boundService := BoundService{}
+
 				fmt.Fprintf(os.Stderr, "Loading service %s from tag mapping file %s for tag %s from file ..%s\n", service_name, file.Name(), tag.Name(), fname[len(startpath):])
 
 				bytes, err = ioutil.ReadFile(fname)
 				if err != nil {
 					panic(errors.New(fmt.Sprintf("LoadConfigurationsFromFiles: Could not load tagging file %s. Error: %+v", fname, err)))
-
+				}
+				str := string(bytes)
+				if str != "" && str != "{}" {
+					boundService.Overwrites = &ServiceConfiguration{}
+					err = json.Unmarshal([]byte(bytes), boundService.Overwrites)
 				}
 
 				service, ok := oc.Services[service_name]
@@ -243,9 +278,9 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 					fmt.Fprintf(os.Stderr, "Could not find service %s when tried to tag it to %s\n", service_name, tag.Name())
 					return nil, err
 				}
-				mc.Services[service_name] = service
+				boundService.DefaultConfiguration = service
 
-				mc.ServiceOverwrites[service_name] = string(bytes)
+				mc.Services[service_name] = boundService
 
 			}
 		}
@@ -297,11 +332,14 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 
 		}
 
-		for name, _ := range mc.Services {
+		for name, boundService := range mc.Services {
 			str := "{}"
-			overwrite, found := mc.ServiceOverwrites[name]
-			if found {
-				str = overwrite
+			if boundService.Overwrites != nil {
+				bytes, err := json.Marshal(boundService.Overwrites)
+				if err != nil {
+					return err
+				}
+				str = string(bytes)
 			}
 
 			_, err := etcdClient.Set(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/services/"+name, str, 0)
@@ -452,7 +490,29 @@ func (c *Containrunner) GetKnownTags() ([]string, error) {
 	return tags, nil
 }
 
-func (c *Containrunner) MergeServiceConfig(dst *ServiceConfiguration, overwrite ServiceConfiguration) error {
+func CopyServiceConfiguration(src ServiceConfiguration) ServiceConfiguration {
+	var network bytes.Buffer
+	enc := gob.NewEncoder(&network)
+	dec := gob.NewDecoder(&network)
+
+	err := enc.Encode(src)
+	if err != nil {
+		panic("Error copying structure")
+	}
+
+	var dst ServiceConfiguration
+	err = dec.Decode(&dst)
+	if err != nil {
+		panic("Error on decode structure")
+	}
+
+	return dst
+}
+
+func MergeServiceConfig(dst ServiceConfiguration, overwrite ServiceConfiguration) ServiceConfiguration {
+
+	dst = CopyServiceConfiguration(dst)
+	overwrite = CopyServiceConfiguration(overwrite)
 
 	if overwrite.EndpointPort != 0 {
 		dst.EndpointPort = overwrite.EndpointPort
@@ -504,7 +564,7 @@ func (c *Containrunner) MergeServiceConfig(dst *ServiceConfiguration, overwrite 
 		dst.Checks = overwrite.Checks
 	}
 
-	return nil
+	return dst
 }
 
 func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []string) (MachineConfiguration, error) {
@@ -529,16 +589,18 @@ func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []
 
 			if node.Dir == true && strings.HasSuffix(node.Key, "/services") {
 				if configuration.Services == nil {
-					configuration.Services = make(map[string]ServiceConfiguration, len(node.Nodes))
+					configuration.Services = make(map[string]BoundService, len(node.Nodes))
 				}
 
 				for _, serviceNode := range node.Nodes {
 					if serviceNode.Dir == false {
 						name := string(serviceNode.Key[len(node.Key)+1:])
 
+						boundService := BoundService{}
+
 						// The GetServiceByName creates completly new ServiceConfiguration instance
 						// So it's later safe to use MergeServiceConfig to modify it (it's not shared between machines or anything)
-						service, err := c.GetServiceByName(name, etcd)
+						boundService.DefaultConfiguration, err = c.GetServiceByName(name, etcd)
 						if err != nil {
 							fmt.Fprintf(os.Stderr, "Error getting service %s: %+v\n", name, err)
 							return configuration, err
@@ -548,13 +610,9 @@ func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []
 							var overwrite ServiceConfiguration
 							err = json.Unmarshal([]byte(serviceNode.Value), &overwrite)
 
-							if err == nil {
-								c.MergeServiceConfig(&service, overwrite)
-							} else {
-								fmt.Fprintf(os.Stderr, "Error reading overwrite config for service %s: error: %+v\n.Service overwrite data was: %s\n", name, err, serviceNode.Value)
-							}
+							boundService.Overwrites = &overwrite
 						}
-						configuration.Services[name] = service
+						configuration.Services[name] = boundService
 					}
 				}
 			}
@@ -599,7 +657,7 @@ func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []
 	return configuration, nil
 }
 
-func (c Containrunner) GetHAProxyEndpointsForService(service_name string) (map[string]*EndpointInfo, error) {
+func (c Containrunner) GetEndpointsForService(service_name string) (map[string]*EndpointInfo, error) {
 
 	etcdClient := GetEtcdClient(c.EtcdEndpoints)
 	defer func() {

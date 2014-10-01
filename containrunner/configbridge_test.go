@@ -128,19 +128,7 @@ Content-Type: text/html
 	res, err = s.etcd.Get("/test/machineconfigurations/tags/testtag/services/comet", true, true)
 	c.Assert(err, IsNil)
 
-	expected := "" +
-		"{\n" +
-		"\t\"Container\" : {\n" +
-		"\t\t\"Config\": {\n" +
-		"\t\t\t\"Env\": [\n" +
-		"\t\t\t\t\"NODE_ENV=staging\"\n" +
-		"\t\t\t],\n" +
-		"\t\t\t\"Image\":\"registry.applifier.info:5000/comet:latest\",\n" +
-		"\t\t\t\"Hostname\": \"comet-test\"\n" +
-		"\t\t}\n" +
-		"\t}\n" +
-		"}\n" +
-		"\n"
+	expected := "{\"Name\":\"\",\"EndpointPort\":0,\"Checks\":null,\"Container\":{\"HostConfig\":{\"Binds\":null,\"ContainerIDFile\":\"\",\"LxcConf\":null,\"Privileged\":false,\"PortBindings\":null,\"Links\":null,\"PublishAllPorts\":false,\"Dns\":null,\"DnsSearch\":null,\"VolumesFrom\":null,\"NetworkMode\":\"\"},\"Config\":{\"Hostname\":\"comet-test\",\"Domainname\":\"\",\"User\":\"\",\"Memory\":0,\"MemorySwap\":0,\"CpuShares\":0,\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"PortSpecs\":null,\"ExposedPorts\":null,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"NODE_ENV=staging\"],\"Cmd\":null,\"Dns\":null,\"Image\":\"registry.applifier.info:5000/comet:latest\",\"Volumes\":null,\"VolumesFrom\":\"\",\"WorkingDir\":\"\",\"Entrypoint\":null,\"NetworkDisabled\":false}},\"Revision\":null,\"SourceControl\":null}"
 	c.Assert(res.Node.Value, Equals, expected)
 
 }
@@ -203,20 +191,17 @@ func (s *ConfigBridgeSuite) TestMergeServiceConfig(c *C) {
 }
 `), overwrite)
 
-	var containrunner Containrunner
+	merged := MergeServiceConfig(*defaults, *overwrite)
 
-	err := containrunner.MergeServiceConfig(defaults, *overwrite)
-	c.Assert(err, Equals, nil)
-
-	c.Assert(defaults.Name, Equals, "comet")
-	c.Assert(defaults.EndpointPort, Equals, 8002)
-	c.Assert(defaults.Container.HostConfig.Binds[0], Equals, "/tmp:/data")
-	c.Assert(defaults.Container.Config.Env[0], Equals, "FOO=BAR")
-	c.Assert(defaults.Container.Config.Env[1], Equals, "NODE_ENV=staging")
-	c.Assert(defaults.Container.Config.Image, Equals, "registry.applifier.info:5000/comet:latest")
-	c.Assert(defaults.Container.Config.Hostname, Equals, "comet-test")
-	c.Assert(defaults.Checks[0].Type, Equals, "http")
-	c.Assert(defaults.Checks[0].Url, Equals, "http://localhost:8002/check")
+	c.Assert(merged.Name, Equals, "comet")
+	c.Assert(merged.EndpointPort, Equals, 8002)
+	c.Assert(merged.Container.HostConfig.Binds[0], Equals, "/tmp:/data")
+	c.Assert(merged.Container.Config.Env[0], Equals, "FOO=BAR")
+	c.Assert(merged.Container.Config.Env[1], Equals, "NODE_ENV=staging")
+	c.Assert(merged.Container.Config.Image, Equals, "registry.applifier.info:5000/comet:latest")
+	c.Assert(merged.Container.Config.Hostname, Equals, "comet-test")
+	c.Assert(merged.Checks[0].Type, Equals, "http")
+	c.Assert(merged.Checks[0].Url, Equals, "http://localhost:8002/check")
 
 }
 
@@ -300,21 +285,21 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTags(c *C) {
 
 	tags := []string{"testtag"}
 	var containrunner Containrunner
-	configuration, err := containrunner.GetMachineConfigurationByTags(s.etcd, tags)
 
-	c.Assert(configuration.Services["comet"].Name, Equals, "comet")
-	c.Assert(configuration.Services["comet"].Container.HostConfig.NetworkMode, Equals, "host")
-	c.Assert(configuration.Services["comet"].Container.Config.AttachStderr, Equals, false)
-	c.Assert(configuration.Services["comet"].Container.Config.Hostname, Equals, "comet")
-	c.Assert(configuration.Services["comet"].Container.Config.Image, Equals, "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2")
-	c.Assert(configuration.Services["comet"].Checks[0].Type, Equals, "http")
-	c.Assert(configuration.Services["comet"].Checks[0].Url, Equals, "http://localhost:3500/check")
+	configuration, err := containrunner.GetMachineConfigurationByTags(s.etcd, tags)
+	c.Assert(configuration.Services["comet"].GetConfig().Name, Equals, "comet")
+	c.Assert(configuration.Services["comet"].GetConfig().Container.HostConfig.NetworkMode, Equals, "host")
+	c.Assert(configuration.Services["comet"].GetConfig().Container.Config.AttachStderr, Equals, false)
+	c.Assert(configuration.Services["comet"].GetConfig().Container.Config.Hostname, Equals, "comet")
+	c.Assert(configuration.Services["comet"].GetConfig().Container.Config.Image, Equals, "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2")
+	c.Assert(configuration.Services["comet"].GetConfig().Checks[0].Type, Equals, "http")
+	c.Assert(configuration.Services["comet"].GetConfig().Checks[0].Url, Equals, "http://localhost:3500/check")
 
 	c.Assert(configuration.HAProxyConfiguration.Template, Equals, "foobar")
 	c.Assert(configuration.HAProxyConfiguration.Certs["test.pem"], Equals, "----TEST-----")
 	c.Assert(configuration.HAProxyConfiguration.Files["hello.txt"], Equals, "hello")
 
-	c.Assert(configuration.Services["comet"].Revision.Revision, Equals, "asdf")
+	c.Assert(configuration.Services["comet"].GetConfig().Revision.Revision, Equals, "asdf")
 
 	_, _ = s.etcd.DeleteDir("/machineconfigurations/tags/testtag/")
 
@@ -411,20 +396,20 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTagsWithOverwrittenPara
 	var containrunner Containrunner
 	configuration, err := containrunner.GetMachineConfigurationByTags(s.etcd, tags)
 
-	c.Assert(configuration.Services["comet"].Name, Equals, "comet")
-	c.Assert(configuration.Services["comet"].Container.HostConfig.NetworkMode, Equals, "host")
-	c.Assert(configuration.Services["comet"].Container.Config.AttachStderr, Equals, false)
-	c.Assert(configuration.Services["comet"].Container.Config.Env[0], Equals, "NODE_ENV=staging")
-	c.Assert(configuration.Services["comet"].Container.Config.Hostname, Equals, "comet")
-	c.Assert(configuration.Services["comet"].Container.Config.Image, Equals, "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2")
-	c.Assert(configuration.Services["comet"].Checks[0].Type, Equals, "http")
-	c.Assert(configuration.Services["comet"].Checks[0].Url, Equals, "http://localhost:3500/check")
+	c.Assert(configuration.Services["comet"].GetConfig().Name, Equals, "comet")
+	c.Assert(configuration.Services["comet"].GetConfig().Container.HostConfig.NetworkMode, Equals, "host")
+	c.Assert(configuration.Services["comet"].GetConfig().Container.Config.AttachStderr, Equals, false)
+	c.Assert(configuration.Services["comet"].GetConfig().Container.Config.Env[0], Equals, "NODE_ENV=staging")
+	c.Assert(configuration.Services["comet"].GetConfig().Container.Config.Hostname, Equals, "comet")
+	c.Assert(configuration.Services["comet"].GetConfig().Container.Config.Image, Equals, "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2")
+	c.Assert(configuration.Services["comet"].GetConfig().Checks[0].Type, Equals, "http")
+	c.Assert(configuration.Services["comet"].GetConfig().Checks[0].Url, Equals, "http://localhost:3500/check")
 
 	c.Assert(configuration.HAProxyConfiguration.Template, Equals, "foobar")
 	c.Assert(configuration.HAProxyConfiguration.Certs["test.pem"], Equals, "----TEST-----")
 	c.Assert(configuration.HAProxyConfiguration.Files["hello.txt"], Equals, "hello")
 
-	c.Assert(configuration.Services["comet"].Revision.Revision, Equals, "asdf")
+	c.Assert(configuration.Services["comet"].GetConfig().Revision.Revision, Equals, "asdf")
 
 	_, _ = s.etcd.DeleteDir("/machineconfigurations/tags/testtag/")
 
@@ -483,7 +468,7 @@ func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherWithPreviousExistingVal
 
 }
 
-func (s *ConfigBridgeSuite) TestGetHAProxyEndpointsForService(c *C) {
+func (s *ConfigBridgeSuite) TestGetEndpointsForService(c *C) {
 
 	_, err := s.etcd.Set("/test/services/testService2/endpoints/10.1.2.3:1234", "{\"Revision\":\"foobar\"}", 10)
 	if err != nil {
@@ -493,7 +478,7 @@ func (s *ConfigBridgeSuite) TestGetHAProxyEndpointsForService(c *C) {
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test"
 	containrunner.EtcdEndpoints = TestingEtcdEndpoints
-	endpoints, err := containrunner.GetHAProxyEndpointsForService("testService2")
+	endpoints, err := containrunner.GetEndpointsForService("testService2")
 	c.Assert(err, IsNil)
 
 	c.Assert(endpoints["10.1.2.3:1234"].Revision, Equals, "foobar")

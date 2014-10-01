@@ -146,7 +146,7 @@ func (s *CheckerSuite) TestCheckIntervalWorker(c *C) {
 	jobsChannel := make(chan ServiceChecks, 100)
 
 	var mc MachineConfiguration
-	mc.Services = make(map[string]ServiceConfiguration)
+	mc.Services = make(map[string]BoundService)
 	v := ServiceConfiguration{}
 	v.Name = "myContainer"
 	v.Checks = []ServiceCheck{{
@@ -159,7 +159,9 @@ func (s *CheckerSuite) TestCheckIntervalWorker(c *C) {
 		DummyResult:      true,
 		ExpectHttpStatus: "",
 		ExpectString:     ""}}
-	mc.Services["myContainer"] = v
+	boundService := BoundService{}
+	boundService.DefaultConfiguration = v
+	mc.Services["myContainer"] = boundService
 
 	go CheckIntervalWorker(configurations, jobsChannel, 50)
 	configurations <- mc

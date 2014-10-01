@@ -21,7 +21,10 @@ func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryTesttagMissing(c *C) 
 
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test2"
-	err := containrunner.VerifyAgainstLocalDirectory("../testdata")
+
+	localoc, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
+	localoc.Services = nil
+	err := containrunner.VerifyAgainstConfiguration(localoc)
 	c.Assert(err.Error(), Equals, "etcd path missing: /test2/machineconfigurations/tags/testtag")
 
 }
@@ -34,7 +37,9 @@ func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceCometMissing(c
 
 	_, err := s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
 
-	err = containrunner.VerifyAgainstLocalDirectory("../testdata")
+	localoc, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
+	localoc.MachineConfigurations = nil
+	err = containrunner.VerifyAgainstConfiguration(localoc)
 	c.Assert(err.Error(), Equals, "etcd path missing: /test2/services/comet")
 
 }
@@ -49,7 +54,9 @@ func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceCometConfigMis
 
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/services/comet/", 10)
 
-	err = containrunner.VerifyAgainstLocalDirectory("../testdata")
+	localoc, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
+	localoc.MachineConfigurations = nil
+	err = containrunner.VerifyAgainstConfiguration(localoc)
 	c.Assert(err.Error(), Equals, "etcd path missing: /test2/services/comet/config")
 
 }
@@ -60,12 +67,14 @@ func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceCometConfigInv
 
 	s.etcd.Delete(containrunner.EtcdBasePath, true)
 
-	_, err := s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
+	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
 
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/services/comet/", 10)
-	_, err = s.etcd.Set(containrunner.EtcdBasePath+"/services/comet/config", "", 10)
+	s.etcd.Set(containrunner.EtcdBasePath+"/services/comet/config", "", 10)
 
-	err = containrunner.VerifyAgainstLocalDirectory("../testdata")
+	localoc, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
+	localoc.MachineConfigurations = nil
+	err := containrunner.VerifyAgainstConfiguration(localoc)
 	c.Assert(err.Error(), Equals, "invalid content: /test2/services/comet/config")
 
 }
@@ -76,18 +85,203 @@ func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceCometConfiOk(c
 
 	s.etcd.Delete(containrunner.EtcdBasePath, true)
 
-	_, err := s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
-	if err != nil {
-		s.etcd.DeleteDir(containrunner.EtcdBasePath + "/machineconfigurations/tags/testtag/")
-	}
-
+	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/services/comet/", 10)
 
 	var comet = `{"Name":"comet","EndpointPort":3500,"Checks":[{"Type":"http","Url":"http://127.0.0.1:3500/check","HttpHost":"","Username":"","Password":"","HostPort":"","DummyResult":false,"ExpectHttpStatus":"","ExpectString":""}],"Container":{"HostConfig":{"Binds":["/tmp:/data"],"ContainerIDFile":"","LxcConf":null,"Privileged":false,"PortBindings":null,"Links":null,"PublishAllPorts":false,"Dns":null,"DnsSearch":null,"VolumesFrom":null,"NetworkMode":"host"},"Config":{"Hostname":"","Domainname":"","User":"","Memory":0,"MemorySwap":0,"CpuShares":0,"AttachStdin":false,"AttachStdout":false,"AttachStderr":false,"PortSpecs":null,"ExposedPorts":null,"Tty":false,"OpenStdin":false,"StdinOnce":false,"Env":["NODE_ENV=vagrant"],"Cmd":null,"Dns":null,"Image":"registry.applifier.info:5000/comet:8fd079b54719d61b6feafbb8056b9ba09ade4760","Volumes":null,"VolumesFrom":"","WorkingDir":"","Entrypoint":null,"NetworkDisabled":false}},"Revision":null,"SourceControl":{"Origin":"github.com/Applifier/comet","OAuthToken":"","CIUrl":""}}`
-	_, err = s.etcd.Set(containrunner.EtcdBasePath+"/services/comet/config", comet, 10)
+	s.etcd.Set(containrunner.EtcdBasePath+"/services/comet/config", comet, 10)
 
-	err = containrunner.VerifyAgainstLocalDirectory("../testdata")
+	localoc, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
+	localoc.MachineConfigurations = nil
+	err := containrunner.VerifyAgainstConfiguration(localoc)
 	c.Assert(err, Equals, nil)
+
+}
+
+func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceTagServiceDirMissing(c *C) {
+	var containrunner Containrunner
+	containrunner.EtcdBasePath = "/test2"
+
+	s.etcd.Delete(containrunner.EtcdBasePath, true)
+
+	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
+
+	localoc, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
+	err := containrunner.VerifyAgainstConfiguration(localoc)
+	c.Assert(err.Error(), Equals, "etcd path missing: /test2/machineconfigurations/tags/testtag/services")
+
+}
+
+func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceTagServiceDirServicesMissing(c *C) {
+	var containrunner Containrunner
+	containrunner.EtcdBasePath = "/test2"
+
+	s.etcd.Delete(containrunner.EtcdBasePath, true)
+
+	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
+	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services", 10)
+
+	localoc, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
+	err := containrunner.VerifyAgainstConfiguration(localoc)
+	c.Assert(err.Error(), Equals, "etcd path missing: /test2/machineconfigurations/tags/testtag/services/comet")
+}
+
+func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceTagServiceDirServicesInvalidContent(c *C) {
+	var containrunner Containrunner
+	containrunner.EtcdBasePath = "/test2"
+
+	s.etcd.Delete(containrunner.EtcdBasePath, true)
+
+	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
+	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services", 10)
+	s.etcd.Set(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services/comet", "asdf", 10)
+
+	localoc, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
+	err := containrunner.VerifyAgainstConfiguration(localoc)
+	c.Assert(err.Error(), Equals, "invalid json: /test2/machineconfigurations/tags/testtag/services/comet")
+}
+
+func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceTagServiceDirServicesInvalidContent2(c *C) {
+	var containrunner Containrunner
+	containrunner.EtcdBasePath = "/test2"
+
+	s.etcd.Delete(containrunner.EtcdBasePath, true)
+
+	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
+	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services", 10)
+	s.etcd.Set(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services/comet", "{}", 10)
+
+	localoc, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
+	err := containrunner.VerifyAgainstConfiguration(localoc)
+	c.Assert(err.Error(), Equals, "invalid content: /test2/machineconfigurations/tags/testtag/services/comet")
+}
+
+func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceTagServiceDirServicesInvalidContent3(c *C) {
+	var containrunner Containrunner
+	containrunner.EtcdBasePath = "/test2"
+
+	s.etcd.Delete(containrunner.EtcdBasePath, true)
+
+	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
+	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services", 10)
+	s.etcd.Set(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services/comet", `
+{
+	"Container" : {
+		"Config": {
+		"Env": [
+
+				"NODE_ENV=this shall be invalid"
+		],
+			"Image":"registry.applifier.info:5000/comet:latest",
+
+			"Hostname": "comet-test"
+		}
+	}
+}
+
+		`, 10)
+
+	localoc, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
+	err := containrunner.VerifyAgainstConfiguration(localoc)
+	c.Assert(err.Error(), Equals, "invalid content: /test2/machineconfigurations/tags/testtag/services/comet")
+}
+
+func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceTagServiceDirServicesOk(c *C) {
+	var containrunner Containrunner
+	containrunner.EtcdBasePath = "/test2"
+
+	s.etcd.Delete(containrunner.EtcdBasePath, true)
+
+	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
+	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services", 10)
+	s.etcd.Set(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services/comet", `
+{
+	"Container" : {
+		"Config": {
+		"Env": [
+
+				"NODE_ENV=staging"
+		],
+			"Image":"registry.applifier.info:5000/comet:latest",
+
+			"Hostname": "comet-test"
+		}
+	}
+}
+
+		`, 10)
+
+	localoc, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
+	localoc.Services = nil
+	tmp := localoc.MachineConfigurations["testtag"]
+	tmp.HAProxyConfiguration = nil
+	localoc.MachineConfigurations["testtag"] = tmp
+	err := containrunner.VerifyAgainstConfiguration(localoc)
+	c.Assert(err, Equals, nil)
+}
+
+func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceTagHaproxyTemplateIsMissing(c *C) {
+	var containrunner Containrunner
+	containrunner.EtcdBasePath = "/test2"
+
+	s.etcd.Delete(containrunner.EtcdBasePath, true)
+
+	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
+	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services", 10)
+	s.etcd.Set(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services/comet", `
+{
+	"Container" : {
+		"Config": {
+		"Env": [
+
+				"NODE_ENV=staging"
+		],
+			"Image":"registry.applifier.info:5000/comet:latest",
+
+			"Hostname": "comet-test"
+		}
+	}
+}
+
+		`, 10)
+
+	localoc, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
+	localoc.Services = nil
+	err := containrunner.VerifyAgainstConfiguration(localoc)
+	c.Assert(err.Error(), Equals, "etcd path missing: /test2/machineconfigurations/tags/testtag/haproxy_config")
+
+}
+
+func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceTagHaproxyTemplateIsInvalid(c *C) {
+	var containrunner Containrunner
+	containrunner.EtcdBasePath = "/test2"
+
+	s.etcd.Delete(containrunner.EtcdBasePath, true)
+
+	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
+	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services", 10)
+	s.etcd.Set(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services/comet", `
+{
+	"Container" : {
+		"Config": {
+		"Env": [
+
+				"NODE_ENV=staging"
+		],
+			"Image":"registry.applifier.info:5000/comet:latest",
+
+			"Hostname": "comet-test"
+		}
+	}
+}
+
+		`, 10)
+	s.etcd.Set(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/haproxy_config", "wrong", 10)
+
+	localoc, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
+	localoc.Services = nil
+	err := containrunner.VerifyAgainstConfiguration(localoc)
+	c.Assert(err.Error(), Equals, "invalid content: /test2/machineconfigurations/tags/testtag/haproxy_config")
 
 }
 
@@ -162,7 +356,7 @@ defaults
 	clitimeout 60000
 	srvtimeout 60000
 
-		`, 10)
+`, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -188,7 +382,8 @@ Content-Type: text/html
 		panic(err)
 	}
 
-	err = containrunner.VerifyAgainstLocalDirectory("../testdata")
+	localoc, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
+	err = containrunner.VerifyAgainstConfiguration(localoc)
 	c.Assert(err, Equals, nil)
 
 }

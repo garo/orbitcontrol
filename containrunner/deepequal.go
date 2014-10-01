@@ -9,6 +9,8 @@ import (
 	"reflect"
 )
 
+const debugDeepEqual = false
+
 // During myDeepValueEqual, must keep track of checks that are
 // in progress.  The comparison algorithm assumes that all
 // checks in progress are true when it reencounters them.
@@ -24,11 +26,15 @@ type visit struct {
 // recursive types.
 func deepValueEqual(v1, v2 reflect.Value, visited map[visit]bool, depth int) bool {
 	if !v1.IsValid() || !v2.IsValid() {
-		//fmt.Println("deepValueEqual: IsValid failure")
+		if debugDeepEqual == true {
+			fmt.Println("deepValueEqual: IsValid failure")
+		}
 		return v1.IsValid() == v2.IsValid()
 	}
 	if v1.Type() != v2.Type() {
-		//fmt.Println("deepValueEqual: Type failure")
+		if debugDeepEqual == true {
+			fmt.Println("deepValueEqual: Type failure")
+		}
 		return false
 	}
 
@@ -70,18 +76,24 @@ func deepValueEqual(v1, v2 reflect.Value, visited map[visit]bool, depth int) boo
 	case reflect.Array:
 		for i := 0; i < v1.Len(); i++ {
 			if !deepValueEqual(v1.Index(i), v2.Index(i), visited, depth+1) {
-				//	fmt.Println("deepValueEqual: Array failure")
+				if debugDeepEqual == true {
+					fmt.Println("deepValueEqual: Array failure")
+				}
 				return false
 			}
 		}
 		return true
 	case reflect.Slice:
 		if v1.IsNil() != v2.IsNil() {
-			//fmt.Println("deepValueEqual: Slice IsNil failure")
+			if debugDeepEqual == true {
+				fmt.Println("deepValueEqual: Slice IsNil failure")
+			}
 			return false
 		}
 		if v1.Len() != v2.Len() {
-			//fmt.Println("deepValueEqual: Slice Len failure")
+			if debugDeepEqual == true {
+				fmt.Println("deepValueEqual: Slice Len failure")
+			}
 			return false
 		}
 		if v1.Pointer() == v2.Pointer() {
@@ -89,8 +101,9 @@ func deepValueEqual(v1, v2 reflect.Value, visited map[visit]bool, depth int) boo
 		}
 		for i := 0; i < v1.Len(); i++ {
 			if !deepValueEqual(v1.Index(i), v2.Index(i), visited, depth+1) {
-				//fmt.Println("deepValueEqual: Slice deep failure")
-
+				if debugDeepEqual == true {
+					fmt.Println("deepValueEqual: Slice deep failure")
+				}
 				return false
 			}
 		}
@@ -98,7 +111,7 @@ func deepValueEqual(v1, v2 reflect.Value, visited map[visit]bool, depth int) boo
 	case reflect.Interface:
 		if v1.IsNil() || v2.IsNil() {
 			if v1.IsNil() != v2.IsNil() {
-				//	fmt.Println("deepValueEqual: Interface IsNil failure")
+				fmt.Println("deepValueEqual: Interface IsNil failure")
 			}
 
 			return v1.IsNil() == v2.IsNil()
@@ -110,25 +123,30 @@ func deepValueEqual(v1, v2 reflect.Value, visited map[visit]bool, depth int) boo
 	case reflect.Struct:
 		for i, n := 0, v1.NumField(); i < n; i++ {
 			if v1.Type().Field(i).Tag.Get("DeepEqual") == "skip" {
-				//fmt.Printf("Skipping DeepEqual field %s\n", v1.Type().Name())
+				if debugDeepEqual == true {
+					fmt.Printf("Skipping DeepEqual field %s\n", v1.Type().Name())
+				}
 				continue
 			}
 			if !deepValueEqual(v1.Field(i), v2.Field(i), visited, depth+1) {
-				//fmt.Printf("deepValueEqual: Struct deepValueEqual failure: %+v vs %+v at depth %d\n", v1.Field(i), v2.Field(i), depth+1)
-
+				if debugDeepEqual == true {
+					fmt.Printf("deepValueEqual: Struct deepValueEqual failure: %+v vs %+v at depth %d\n", v1.Field(i), v2.Field(i), depth+1)
+				}
 				return false
 			}
 		}
 		return true
 	case reflect.Map:
 		if v1.IsNil() != v2.IsNil() {
-			//fmt.Println("deepValueEqual: Map IsNil failure")
-
+			if debugDeepEqual == true {
+				fmt.Println("deepValueEqual: Map IsNil failure")
+			}
 			return false
 		}
 		if v1.Len() != v2.Len() {
-			//fmt.Printf("deepValueEqual: Map %s Len failure: %d vs %d. Keys1: %+v, Keys2: %+v\n", v1.Type().Name(), v1.Len(), v2.Len(), v1.MapKeys(), v2.MapKeys())
-
+			if debugDeepEqual == true {
+				fmt.Printf("deepValueEqual: Map %s Len failure: %d vs %d. Keys1: %+v, Keys2: %+v\n", v1.Type().Name(), v1.Len(), v2.Len(), v1.MapKeys(), v2.MapKeys())
+			}
 			return false
 		}
 		if v1.Pointer() == v2.Pointer() {
@@ -136,8 +154,9 @@ func deepValueEqual(v1, v2 reflect.Value, visited map[visit]bool, depth int) boo
 		}
 		for _, k := range v1.MapKeys() {
 			if !deepValueEqual(v1.MapIndex(k), v2.MapIndex(k), visited, depth+1) {
-				//fmt.Println("deepValueEqual: Map keys myDeepValueEqual failure")
-
+				if debugDeepEqual == true {
+					fmt.Println("deepValueEqual: Map keys myDeepValueEqual failure")
+				}
 				return false
 			}
 		}
@@ -147,12 +166,16 @@ func deepValueEqual(v1, v2 reflect.Value, visited map[visit]bool, depth int) boo
 			return true
 		}
 		// Can't do better than this:
-		//fmt.Println("deepValueEqual: Func failure")
+		if debugDeepEqual == true {
+			fmt.Println("deepValueEqual: Func failure")
+		}
 
 		return false
 	case reflect.String:
 		if v1.String() != v2.String() {
-			//fmt.Println("deepValueEqual: String failure")
+			if debugDeepEqual == true {
+				fmt.Println("deepValueEqual: String failure")
+			}
 			return false
 		}
 
@@ -160,28 +183,36 @@ func deepValueEqual(v1, v2 reflect.Value, visited map[visit]bool, depth int) boo
 
 	case reflect.Float32, reflect.Float64:
 		if v1.Float() != v2.Float() {
-			//fmt.Println("deepValueEqual: Float failure")
+			if debugDeepEqual == true {
+				fmt.Println("deepValueEqual: Float failure")
+			}
 			return false
 		}
 
 		return true
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		if v1.Uint() != v2.Uint() {
-			//fmt.Println("deepValueEqual: Uint failure")
+			if debugDeepEqual == true {
+				fmt.Println("deepValueEqual: Uint failure")
+			}
 			return false
 		}
 
 		return true
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		if v1.Int() != v2.Int() {
-			//fmt.Println("deepValueEqual: Uint failure")
+			if debugDeepEqual == true {
+				fmt.Println("deepValueEqual: Uint failure")
+			}
 			return false
 		}
 
 		return true
 	case reflect.Bool:
 		if v1.Bool() != v2.Bool() {
-			//fmt.Println("deepValueEqual: Uint failure")
+			if debugDeepEqual == true {
+				fmt.Println("deepValueEqual: Uint failure")
+			}
 			return false
 		}
 
@@ -216,8 +247,9 @@ func DeepEqual(a1, a2 interface{}) bool {
 	v1 := reflect.ValueOf(a1)
 	v2 := reflect.ValueOf(a2)
 	if v1.Type() != v2.Type() {
-		//fmt.Println("DeepEqual: Type failure")
-
+		if debugDeepEqual == true {
+			fmt.Printf("DeepEqual: Type failure: %+v vs %+v\n", v1.Type(), v2.Type())
+		}
 		return false
 	}
 	return deepValueEqual(v1, v2, make(map[visit]bool), 0)

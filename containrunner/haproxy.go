@@ -17,7 +17,7 @@ import (
 )
 
 type ConfigBridgeInterface interface {
-	GetHAProxyEndpointsForService(service_name string) (map[string]*EndpointInfo, error)
+	GetEndpointsForService(service_name string) (map[string]*EndpointInfo, error)
 }
 
 // Static HAProxy settings
@@ -257,7 +257,7 @@ func (hac *HAProxySettings) GetNewConfig(cbi ConfigBridgeInterface, configuratio
 			backend_servers, ok := configuration.ServiceBackends[service_name]
 			var err error
 			if ok == false {
-				backend_servers, err = cbi.GetHAProxyEndpointsForService(service_name)
+				backend_servers, err = cbi.GetEndpointsForService(service_name)
 
 				if err != nil {
 					return nil, err

@@ -32,16 +32,6 @@ func GetServiceConfigurationString() string {
 	return ""
 }
 
-func GetConfiguration(str string) MachineConfiguration {
-	var conf MachineConfiguration
-	err := json.Unmarshal([]byte(str), &conf)
-	if err != nil {
-		panic(err)
-	}
-
-	return conf
-}
-
 func GetDockerClient() *docker.Client {
 	endpoint := "unix:///var/run/docker.sock"
 	client, err := docker.NewClient(endpoint)
@@ -131,7 +121,8 @@ func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
 	}
 
 	var matching_containers []ContainerDetails
-	for _, required_service := range conf.Services {
+	for _, required_bound_service := range conf.Services {
+		required_service := required_bound_service.GetConfig()
 		if required_service.Container == nil {
 			continue
 		}

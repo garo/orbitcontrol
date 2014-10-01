@@ -249,7 +249,7 @@ func PrintCommitInfo(commit *github.RepositoryCommit) {
 }
 
 func CheckDeploymentProgress(service_name string, desired_revision string) (old []string, updated []string, err error) {
-	endpoints, err := containrunnerInstance.GetHAProxyEndpointsForService(service_name)
+	endpoints, err := containrunnerInstance.GetEndpointsForService(service_name)
 	if err != nil {
 		panic(err)
 	}

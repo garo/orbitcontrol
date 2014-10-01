@@ -81,7 +81,8 @@ func CheckIntervalWorker(configurations <-chan MachineConfiguration, jobsChannel
 			if configuration != nil {
 				//fmt.Printf("services: %+v\n", configuration.Services)
 
-				for name, service := range configuration.Services {
+				for name, boundService := range configuration.Services {
+					service := boundService.GetConfig()
 					var cc ServiceChecks
 					cc.ServiceName = name
 					cc.EndpointPort = service.EndpointPort

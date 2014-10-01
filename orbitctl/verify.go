@@ -29,7 +29,7 @@ func runVerify(args []string) (exit int) {
 
 	err := containrunnerInstance.VerifyAgainstLocalDirectory(dir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "configuration did not match. Error: %+v", err)
+		fmt.Fprintf(os.Stderr, "configuration did not match.\nError: %+v\n", err)
 		return 1
 	} else {
 		fmt.Fprintf(os.Stderr, "All ok\n")

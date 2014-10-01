@@ -21,7 +21,7 @@ type ConfigBridgeInterfaceMock struct {
 	Stub func(service_name string) (map[string]*EndpointInfo, error)
 }
 
-func (c ConfigBridgeInterfaceMock) GetHAProxyEndpointsForService(service_name string) (map[string]*EndpointInfo, error) {
+func (c ConfigBridgeInterfaceMock) GetEndpointsForService(service_name string) (map[string]*EndpointInfo, error) {
 	return c.Stub(service_name)
 }
 
