@@ -37,7 +37,7 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 
 	var webserver Webserver
 	webserver.Containrunner = &containrunner
-	webserver.Start(true)
+	webserver.Start()
 
 	quit := false
 	var lastConverge time.Time
