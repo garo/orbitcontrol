@@ -64,6 +64,7 @@ func init() {
 		cmdVerify,
 		cmdEndpoints,
 		cmdZabbix,
+		cmdWebserver,
 	}
 
 	globalFlagset.BoolVar(&globalFlags.Debug, "debug", false, "Print out more debug information to stderr")

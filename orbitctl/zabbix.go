@@ -11,7 +11,7 @@ var (
 		Summary: "Outputs data to be sent to zabbix. Multiple different modes.",
 		Usage:   "[mode, for example endpoints]",
 		Description: `Modes:
-endpoints: Outputs number of endpoints. Uses key orbit.endpoints[service]
+endpoints: Outputs number of endpoints. Uses key orbit.running_endpoints with service name as the host
 `,
 		Run: runZabbix,
 	}
@@ -41,7 +41,7 @@ func runZabbix(args []string) (exit int) {
 				return 1
 			}
 
-			fmt.Printf("- orbit.endpoints[%s] %d\n", service_name, len(endpoints))
+			fmt.Printf("%s orbit.running_endpoints %d\n", service_name, len(endpoints))
 		}
 
 	}
