@@ -1,0 +1,24 @@
+{
+	"ImportPath": "github.com/garo/orbitcontrol",
+	"GoVersion": "go1.3",
+	"Deps": [
+		{
+			"ImportPath": "github.com/coreos/go-etcd/etcd",
+			"Comment": "v0.2.0-rc1-119-gd0d2431",
+			"Rev": "d0d2431cb799506bd73ce72f86372272aafc07f8"
+		},
+		{
+			"ImportPath": "github.com/fsouza/go-dockerclient",
+			"Comment": "0.2.1-173-g9dba2cd",
+			"Rev": "9dba2cd58e63aa5f29ada9e724a3982d4219ee4d"
+		},
+		{
+			"ImportPath": "github.com/garo/containrunner/containrunner",
+			"Rev": "d1701eafdb9e95a329a98191c65a741c2e0d9933"
+		},
+		{
+			"ImportPath": "github.com/op/go-logging",
+			"Rev": "c1b91128b40ead0e98dbc63cde57c0541feaa6c1"
+		}
+	]
+}
