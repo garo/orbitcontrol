@@ -154,9 +154,7 @@ func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
 	var imageRegexp = regexp.MustCompile("(.+):")
 	for _, container := range existing_containers {
 		m := imageRegexp.FindStringSubmatch(container.Image)
-		if len(m) == 0 {
-			fmt.Printf("Invalid string submatch for container.Image %s\n", container.Image)
-		} else {
+		if len(m) >= 1 {
 			image := m[1]
 
 			for _, authoritative_name := range conf.AuthoritativeNames {
