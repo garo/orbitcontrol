@@ -1,5 +1,5 @@
 {
-	"Name": "comet",
+	"Name": "ubuntu",
 	"EndpointPort":3500,
 	"Container" : {
 		"HostConfig" : {
@@ -16,7 +16,7 @@
 			"AttachStdin": false,
 			"AttachStdout": false,
 			"OpenStdin": false,
-			"Image": "registry.applifier.info:5000/comet:8fd079b54719d61b6feafbb8056b9ba09ade4760"
+			"Image": "ubuntu"
 		}
 	},
 	"checks" : [
@@ -26,7 +26,7 @@
 		}
 	],
 	"SourceControl":{
-		"Origin":"github.com/Applifier/comet",
+		"Origin":"github.com/Applifier/ubuntu",
 		"OAuth":""
 	}
 }

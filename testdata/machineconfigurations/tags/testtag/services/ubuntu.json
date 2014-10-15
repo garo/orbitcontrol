@@ -4,8 +4,8 @@
 			"Env": [
 				"NODE_ENV=staging"
 			],
-			"Image":"registry.applifier.info:5000/comet:latest",
-			"Hostname": "comet-test"
+			"Image":"ubuntu",
+			"Hostname": "ubuntu-test"
 		}
 	}
 }

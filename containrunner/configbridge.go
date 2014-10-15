@@ -225,7 +225,11 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 					panic(errors.New(fmt.Sprintf("LoadConfigurationsFromFiles: Could not load certificate file %s. Error: %+v", fname, err)))
 
 				}
-				mc.HAProxyConfiguration.Certs[file.Name()] = string(bytes)
+				if mc.HAProxyConfiguration == nil {
+					panic(errors.New("LoadConfigurationsFromFiles: There were certificates but no haproxy.tpl"))
+				} else {
+					mc.HAProxyConfiguration.Certs[file.Name()] = string(bytes)
+				}
 
 			}
 		}

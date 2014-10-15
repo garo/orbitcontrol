@@ -64,11 +64,11 @@ Content-Type: text/html
 
 	fmt.Printf("TEST: %+v\n", orbitConfiguration.MachineConfigurations["testtag"].Services["dashboards"])
 
-	c.Assert(orbitConfiguration.MachineConfigurations["testtag"].Services["comet"], Not(IsNil))
+	c.Assert(orbitConfiguration.MachineConfigurations["testtag"].Services["ubuntu"], Not(IsNil))
 
-	c.Assert(orbitConfiguration.Services["comet"].Name, Equals, "comet")
-	c.Assert(orbitConfiguration.Services["comet"].EndpointPort, Equals, 3500)
-	c.Assert(orbitConfiguration.Services["comet"].Checks[0].Type, Equals, "http")
+	c.Assert(orbitConfiguration.Services["ubuntu"].Name, Equals, "ubuntu")
+	c.Assert(orbitConfiguration.Services["ubuntu"].EndpointPort, Equals, 3500)
+	c.Assert(orbitConfiguration.Services["ubuntu"].Checks[0].Type, Equals, "http")
 
 }
 
@@ -121,14 +121,14 @@ Content-Type: text/html
 			"\tsrvtimeout 60000\n"+
 			"\n")
 
-	res, err = s.etcd.Get("/test/services/comet/config", true, true)
+	res, err = s.etcd.Get("/test/services/ubuntu/config", true, true)
 	c.Assert(err, IsNil)
-	c.Assert(res.Node.Value, Equals, "{\"Name\":\"comet\",\"EndpointPort\":3500,\"Checks\":[{\"Type\":\"http\",\"Url\":\"http://127.0.0.1:3500/check\",\"HttpHost\":\"\",\"Username\":\"\",\"Password\":\"\",\"HostPort\":\"\",\"DummyResult\":false,\"ExpectHttpStatus\":\"\",\"ExpectString\":\"\"}],\"Container\":{\"HostConfig\":{\"Binds\":[\"/tmp:/data\"],\"ContainerIDFile\":\"\",\"LxcConf\":null,\"Privileged\":false,\"PortBindings\":null,\"Links\":null,\"PublishAllPorts\":false,\"Dns\":null,\"DnsSearch\":null,\"VolumesFrom\":null,\"NetworkMode\":\"host\"},\"Config\":{\"Hostname\":\"\",\"Domainname\":\"\",\"User\":\"\",\"Memory\":0,\"MemorySwap\":0,\"CpuShares\":0,\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"PortSpecs\":null,\"ExposedPorts\":null,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"NODE_ENV=vagrant\"],\"Cmd\":null,\"Dns\":null,\"Image\":\"registry.applifier.info:5000/comet:8fd079b54719d61b6feafbb8056b9ba09ade4760\",\"Volumes\":null,\"VolumesFrom\":\"\",\"WorkingDir\":\"\",\"Entrypoint\":null,\"NetworkDisabled\":false}},\"Revision\":null,\"SourceControl\":{\"Origin\":\"github.com/Applifier/comet\",\"OAuthToken\":\"\",\"CIUrl\":\"\"}}")
+	c.Assert(res.Node.Value, Equals, "{\"Name\":\"ubuntu\",\"EndpointPort\":3500,\"Checks\":[{\"Type\":\"http\",\"Url\":\"http://127.0.0.1:3500/check\",\"HttpHost\":\"\",\"Username\":\"\",\"Password\":\"\",\"HostPort\":\"\",\"DummyResult\":false,\"ExpectHttpStatus\":\"\",\"ExpectString\":\"\"}],\"Container\":{\"HostConfig\":{\"Binds\":[\"/tmp:/data\"],\"ContainerIDFile\":\"\",\"LxcConf\":null,\"Privileged\":false,\"PortBindings\":null,\"Links\":null,\"PublishAllPorts\":false,\"Dns\":null,\"DnsSearch\":null,\"VolumesFrom\":null,\"NetworkMode\":\"host\"},\"Config\":{\"Hostname\":\"\",\"Domainname\":\"\",\"User\":\"\",\"Memory\":0,\"MemorySwap\":0,\"CpuShares\":0,\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"PortSpecs\":null,\"ExposedPorts\":null,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"NODE_ENV=vagrant\"],\"Cmd\":null,\"Dns\":null,\"Image\":\"ubuntu\",\"Volumes\":null,\"VolumesFrom\":\"\",\"WorkingDir\":\"\",\"Entrypoint\":null,\"NetworkDisabled\":false}},\"Revision\":null,\"SourceControl\":{\"Origin\":\"github.com/Applifier/ubuntu\",\"OAuthToken\":\"\",\"CIUrl\":\"\"}}")
 
-	res, err = s.etcd.Get("/test/machineconfigurations/tags/testtag/services/comet", true, true)
+	res, err = s.etcd.Get("/test/machineconfigurations/tags/testtag/services/ubuntu", true, true)
 	c.Assert(err, IsNil)
 
-	expected := "{\"Name\":\"\",\"EndpointPort\":0,\"Checks\":null,\"Container\":{\"HostConfig\":{\"Binds\":null,\"ContainerIDFile\":\"\",\"LxcConf\":null,\"Privileged\":false,\"PortBindings\":null,\"Links\":null,\"PublishAllPorts\":false,\"Dns\":null,\"DnsSearch\":null,\"VolumesFrom\":null,\"NetworkMode\":\"\"},\"Config\":{\"Hostname\":\"comet-test\",\"Domainname\":\"\",\"User\":\"\",\"Memory\":0,\"MemorySwap\":0,\"CpuShares\":0,\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"PortSpecs\":null,\"ExposedPorts\":null,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"NODE_ENV=staging\"],\"Cmd\":null,\"Dns\":null,\"Image\":\"registry.applifier.info:5000/comet:latest\",\"Volumes\":null,\"VolumesFrom\":\"\",\"WorkingDir\":\"\",\"Entrypoint\":null,\"NetworkDisabled\":false}},\"Revision\":null,\"SourceControl\":null}"
+	expected := "{\"Name\":\"\",\"EndpointPort\":0,\"Checks\":null,\"Container\":{\"HostConfig\":{\"Binds\":null,\"ContainerIDFile\":\"\",\"LxcConf\":null,\"Privileged\":false,\"PortBindings\":null,\"Links\":null,\"PublishAllPorts\":false,\"Dns\":null,\"DnsSearch\":null,\"VolumesFrom\":null,\"NetworkMode\":\"\"},\"Config\":{\"Hostname\":\"ubuntu-test\",\"Domainname\":\"\",\"User\":\"\",\"Memory\":0,\"MemorySwap\":0,\"CpuShares\":0,\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"PortSpecs\":null,\"ExposedPorts\":null,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"NODE_ENV=staging\"],\"Cmd\":null,\"Dns\":null,\"Image\":\"ubuntu\",\"Volumes\":null,\"VolumesFrom\":\"\",\"WorkingDir\":\"\",\"Entrypoint\":null,\"NetworkDisabled\":false}},\"Revision\":null,\"SourceControl\":null}"
 	c.Assert(res.Node.Value, Equals, expected)
 
 }
@@ -139,7 +139,7 @@ func (s *ConfigBridgeSuite) TestMergeServiceConfig(c *C) {
 
 	json.Unmarshal([]byte(`
 {
-	"Name": "comet",
+	"Name": "ubuntu",
 	"EndpointPort" : 80,
 	"Container" : {
 		"HostConfig" : {
@@ -157,8 +157,8 @@ func (s *ConfigBridgeSuite) TestMergeServiceConfig(c *C) {
 			"AttachStdin": false,
 			"AttachStdout": false,
 			"OpenStdin": false,
-			"Hostname": "comet",
-			"Image": "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+			"Hostname": "ubuntu",
+			"Image": "ubuntu"
 		}
 	},
 	"checks" : [
@@ -178,8 +178,8 @@ func (s *ConfigBridgeSuite) TestMergeServiceConfig(c *C) {
 			"Env": [
 				"NODE_ENV=staging"
 			],
-			"Image":"registry.applifier.info:5000/comet:latest",
-			"Hostname": "comet-test"
+			"Image":"ubuntu",
+			"Hostname": "ubuntu-test"
 		}
 	},
 	"checks" : [
@@ -193,13 +193,13 @@ func (s *ConfigBridgeSuite) TestMergeServiceConfig(c *C) {
 
 	merged := MergeServiceConfig(*defaults, *overwrite)
 
-	c.Assert(merged.Name, Equals, "comet")
+	c.Assert(merged.Name, Equals, "ubuntu")
 	c.Assert(merged.EndpointPort, Equals, 8002)
 	c.Assert(merged.Container.HostConfig.Binds[0], Equals, "/tmp:/data")
 	c.Assert(merged.Container.Config.Env[0], Equals, "FOO=BAR")
 	c.Assert(merged.Container.Config.Env[1], Equals, "NODE_ENV=staging")
-	c.Assert(merged.Container.Config.Image, Equals, "registry.applifier.info:5000/comet:latest")
-	c.Assert(merged.Container.Config.Hostname, Equals, "comet-test")
+	c.Assert(merged.Container.Config.Image, Equals, "ubuntu")
+	c.Assert(merged.Container.Config.Hostname, Equals, "ubuntu-test")
 	c.Assert(merged.Checks[0].Type, Equals, "http")
 	c.Assert(merged.Checks[0].Url, Equals, "http://localhost:8002/check")
 
@@ -212,9 +212,9 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTags(c *C) {
 		s.etcd.DeleteDir("/machineconfigurations/tags/testtag/")
 	}
 
-	var comet = `
+	var ubuntu = `
 {
-	"Name": "comet",
+	"Name": "ubuntu",
 	"Container" : {
 		"HostConfig" : {
 			"Binds": [
@@ -230,8 +230,8 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTags(c *C) {
 			"AttachStdin": false,
 			"AttachStdout": false,
 			"OpenStdin": false,
-			"Hostname": "comet",
-			"Image": "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+			"Hostname": "ubuntu",
+			"Image": "ubuntu"
 		}
 	},
 	"checks" : [
@@ -242,7 +242,7 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTags(c *C) {
 	]
 }
 `
-	_, err = s.etcd.Set("/services/comet/config", comet, 10)
+	_, err = s.etcd.Set("/services/ubuntu/config", ubuntu, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -252,17 +252,17 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTags(c *C) {
 	"Revision" : "asdf"
 }`
 
-	_, err = s.etcd.Set("/services/comet/revision", revision, 10)
+	_, err = s.etcd.Set("/services/ubuntu/revision", revision, 10)
 	if err != nil {
 		panic(err)
 	}
 
-	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/services/comet", ``, 10)
+	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/services/ubuntu", ``, 10)
 	if err != nil {
 		panic(err)
 	}
 
-	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/authoritative_names", `["registry.applifier.info:5000/comet"]`, 10)
+	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/authoritative_names", `["ubuntu"]`, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -287,19 +287,19 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTags(c *C) {
 	var containrunner Containrunner
 
 	configuration, err := containrunner.GetMachineConfigurationByTags(s.etcd, tags)
-	c.Assert(configuration.Services["comet"].GetConfig().Name, Equals, "comet")
-	c.Assert(configuration.Services["comet"].GetConfig().Container.HostConfig.NetworkMode, Equals, "host")
-	c.Assert(configuration.Services["comet"].GetConfig().Container.Config.AttachStderr, Equals, false)
-	c.Assert(configuration.Services["comet"].GetConfig().Container.Config.Hostname, Equals, "comet")
-	c.Assert(configuration.Services["comet"].GetConfig().Container.Config.Image, Equals, "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2")
-	c.Assert(configuration.Services["comet"].GetConfig().Checks[0].Type, Equals, "http")
-	c.Assert(configuration.Services["comet"].GetConfig().Checks[0].Url, Equals, "http://localhost:3500/check")
+	c.Assert(configuration.Services["ubuntu"].GetConfig().Name, Equals, "ubuntu")
+	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.HostConfig.NetworkMode, Equals, "host")
+	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.Config.AttachStderr, Equals, false)
+	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.Config.Hostname, Equals, "ubuntu")
+	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.Config.Image, Equals, "ubuntu")
+	c.Assert(configuration.Services["ubuntu"].GetConfig().Checks[0].Type, Equals, "http")
+	c.Assert(configuration.Services["ubuntu"].GetConfig().Checks[0].Url, Equals, "http://localhost:3500/check")
 
 	c.Assert(configuration.HAProxyConfiguration.Template, Equals, "foobar")
 	c.Assert(configuration.HAProxyConfiguration.Certs["test.pem"], Equals, "----TEST-----")
 	c.Assert(configuration.HAProxyConfiguration.Files["hello.txt"], Equals, "hello")
 
-	c.Assert(configuration.Services["comet"].GetConfig().Revision.Revision, Equals, "asdf")
+	c.Assert(configuration.Services["ubuntu"].GetConfig().Revision.Revision, Equals, "asdf")
 
 	_, _ = s.etcd.DeleteDir("/machineconfigurations/tags/testtag/")
 
@@ -312,9 +312,9 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTagsWithOverwrittenPara
 		s.etcd.DeleteDir("/machineconfigurations/tags/testtag/")
 	}
 
-	var comet = `
+	var ubuntu = `
 {
-	"Name": "comet",
+	"Name": "ubuntu",
 	"Container" : {
 		"HostConfig" : {
 			"Binds": [
@@ -330,8 +330,8 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTagsWithOverwrittenPara
 			"AttachStdin": false,
 			"AttachStdout": false,
 			"OpenStdin": false,
-			"Hostname": "comet",
-			"Image": "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+			"Hostname": "ubuntu",
+			"Image": "ubuntu"
 		}
 	},
 	"checks" : [
@@ -342,7 +342,7 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTagsWithOverwrittenPara
 	]
 }
 `
-	_, err = s.etcd.Set("/services/comet/config", comet, 10)
+	_, err = s.etcd.Set("/services/ubuntu/config", ubuntu, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -352,12 +352,12 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTagsWithOverwrittenPara
 	"Revision" : "asdf"
 }`
 
-	_, err = s.etcd.Set("/services/comet/revision", revision, 10)
+	_, err = s.etcd.Set("/services/ubuntu/revision", revision, 10)
 	if err != nil {
 		panic(err)
 	}
 
-	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/services/comet", `
+	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/services/ubuntu", `
 {
 	"Container" : {
 		"Config": {
@@ -371,7 +371,7 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTagsWithOverwrittenPara
 		panic(err)
 	}
 
-	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/authoritative_names", `["registry.applifier.info:5000/comet"]`, 10)
+	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/authoritative_names", `["ubuntu"]`, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -396,20 +396,20 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTagsWithOverwrittenPara
 	var containrunner Containrunner
 	configuration, err := containrunner.GetMachineConfigurationByTags(s.etcd, tags)
 
-	c.Assert(configuration.Services["comet"].GetConfig().Name, Equals, "comet")
-	c.Assert(configuration.Services["comet"].GetConfig().Container.HostConfig.NetworkMode, Equals, "host")
-	c.Assert(configuration.Services["comet"].GetConfig().Container.Config.AttachStderr, Equals, false)
-	c.Assert(configuration.Services["comet"].GetConfig().Container.Config.Env[0], Equals, "NODE_ENV=staging")
-	c.Assert(configuration.Services["comet"].GetConfig().Container.Config.Hostname, Equals, "comet")
-	c.Assert(configuration.Services["comet"].GetConfig().Container.Config.Image, Equals, "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2")
-	c.Assert(configuration.Services["comet"].GetConfig().Checks[0].Type, Equals, "http")
-	c.Assert(configuration.Services["comet"].GetConfig().Checks[0].Url, Equals, "http://localhost:3500/check")
+	c.Assert(configuration.Services["ubuntu"].GetConfig().Name, Equals, "ubuntu")
+	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.HostConfig.NetworkMode, Equals, "host")
+	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.Config.AttachStderr, Equals, false)
+	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.Config.Env[0], Equals, "NODE_ENV=staging")
+	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.Config.Hostname, Equals, "ubuntu")
+	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.Config.Image, Equals, "ubuntu")
+	c.Assert(configuration.Services["ubuntu"].GetConfig().Checks[0].Type, Equals, "http")
+	c.Assert(configuration.Services["ubuntu"].GetConfig().Checks[0].Url, Equals, "http://localhost:3500/check")
 
 	c.Assert(configuration.HAProxyConfiguration.Template, Equals, "foobar")
 	c.Assert(configuration.HAProxyConfiguration.Certs["test.pem"], Equals, "----TEST-----")
 	c.Assert(configuration.HAProxyConfiguration.Files["hello.txt"], Equals, "hello")
 
-	c.Assert(configuration.Services["comet"].GetConfig().Revision.Revision, Equals, "asdf")
+	c.Assert(configuration.Services["ubuntu"].GetConfig().Revision.Revision, Equals, "asdf")
 
 	_, _ = s.etcd.DeleteDir("/machineconfigurations/tags/testtag/")
 
