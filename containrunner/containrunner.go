@@ -95,9 +95,9 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 				ConvergeContainers(machineConfiguration, docker)
 				lastConverge = time.Now()
 
-				go func(containrunner *Containrunner, machineConfiguration MachineConfiguration) {
-					containrunner.HAProxySettings.ConvergeHAProxy(containrunner, machineConfiguration.HAProxyConfiguration, nil)
-				}(&containrunner, newMachineConfiguration)
+				//go func(containrunner *Containrunner, machineConfiguration MachineConfiguration) {
+				//	containrunner.HAProxySettings.ConvergeHAProxy(containrunner, machineConfiguration.HAProxyConfiguration, nil)
+				//}(&containrunner, newMachineConfiguration)
 			}
 
 		}
