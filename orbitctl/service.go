@@ -178,20 +178,24 @@ func runService(args []string) (exit int) {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Printf("Monitoring deployment progress (New deployment has been committed, you can press Ctrl-C to stop monitoring)\n")
-		fmt.Printf("Full deployment takes around two minutes\n")
 
-		for true {
-			time.Sleep(time.Second * 1)
-			old, updated, _ := CheckDeploymentProgress(name, revision)
-			fmt.Printf("Servers with old revision: %d, servers with new revision: %d... \r", len(old), len(updated))
-			if len(old) == 0 && len(updated) > 0 {
-				break
+		if serviceConfiguration.Checks == nil || len(serviceConfiguration.Checks) == 0 {
+			fmt.Printf("Service has no checks, so deployment progress can't be monitored\n")
+		} else {
+			fmt.Printf("Monitoring deployment progress (New deployment has been committed, you can press Ctrl-C to stop monitoring)\n")
+			fmt.Printf("Full deployment takes around two minutes\n")
+
+			for true {
+				time.Sleep(time.Second * 1)
+				old, updated, _ := CheckDeploymentProgress(name, revision)
+				fmt.Printf("Servers with old revision: %d, servers with new revision: %d... \r", len(old), len(updated))
+				if len(old) == 0 && len(updated) > 0 {
+					break
+				}
 			}
+
+			fmt.Printf("\nAll servers updated\n")
 		}
-
-		fmt.Printf("\nAll servers updated\n")
-
 	}
 
 	return 0
