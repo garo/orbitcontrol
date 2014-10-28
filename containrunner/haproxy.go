@@ -437,7 +437,7 @@ func (hac *HAProxySettings) UpdateBackends(configuration *HAProxyConfiguration) 
 		}
 	}
 
-	if total_backends > 0 {
+	if total_backends > 15 {
 		enabled_servers_percenet := float32(len(enabled_backends)) / float32(total_backends)
 
 		// Restart haproxy if there's more than 30% of the backends are down
