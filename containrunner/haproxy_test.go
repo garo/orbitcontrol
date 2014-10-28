@@ -386,6 +386,20 @@ func (s *HAProxySuite) TestUpdateBackendsUpdateRequired_because_less_than80_perc
 	backends["172.16.2.159:3500"] = &EndpointInfo{}
 	backends["172.16.2.160:3500"] = &EndpointInfo{}
 	backends["172.16.2.161:3500"] = &EndpointInfo{}
+	backends["172.16.2.162:3500"] = &EndpointInfo{}
+	backends["172.16.2.163:3500"] = &EndpointInfo{}
+	backends["172.16.2.164:3500"] = &EndpointInfo{}
+	backends["172.16.2.165:3500"] = &EndpointInfo{}
+	backends["172.16.2.166:3500"] = &EndpointInfo{}
+	backends["172.16.2.167:3500"] = &EndpointInfo{}
+	backends["172.16.2.168:3500"] = &EndpointInfo{}
+	backends["172.16.2.169:3500"] = &EndpointInfo{}
+	backends["172.16.2.170:3500"] = &EndpointInfo{}
+	backends["172.16.2.171:3500"] = &EndpointInfo{}
+	backends["172.16.2.172:3500"] = &EndpointInfo{}
+	backends["172.16.2.173:3500"] = &EndpointInfo{}
+	backends["172.16.2.174:3500"] = &EndpointInfo{}
+	backends["172.16.2.175:3500"] = &EndpointInfo{}
 	configuration.ServiceBackends["comet"] = backends
 
 	commands := make(chan string, 5)
