@@ -167,6 +167,13 @@ func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
 					if err != nil {
 						panic(err)
 					}
+
+					fmt.Printf("Removing old container image %+v\n", container.Container.Image)
+					err = client.RemoveImage(container.Container.Image)
+					if err != nil {
+						fmt.Printf("Could not remove old image %+v, reason: %+v", container.Container.Image, err)
+					}
+
 				}
 			}
 		}
