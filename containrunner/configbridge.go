@@ -344,7 +344,7 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 				name := string(node.Key[len(res.Node.Key)+1:])
 				_, exists := mc.Services[name]
 				if exists == false {
-					fmt.Printf("Service %s does not exists any more, deleting it.\n", name)
+					fmt.Printf("Service %s does not exists any more in tag %s, deleting it.\n", name, tag)
 					etcdClient.Delete(node.Key, true)
 				}
 			}
