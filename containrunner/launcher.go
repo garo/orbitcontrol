@@ -74,14 +74,35 @@ func FindMatchingContainers(existing_containers []ContainerDetails, required_ser
 			continue
 		}
 
-		/* TBD
-		if required_container.DockerOptions["Env"] != nil {
-			envs := required_container.DockerOptions["Env"].([]interface{})
-			for _, env := range envs {
-				fmt.Println("env ", env.(string), "\n")
+		if required_service.Container.Config.Env != nil || container_details.Container.Config.Env != nil {
+
+			for _, env1 := range required_service.Container.Config.Env {
+				env_found := false
+				for _, env2 := range container_details.Container.Config.Env {
+					if env1 == env2 {
+						env_found = true
+						break
+					}
+				}
+				if env_found == false {
+					found = false
+				}
 			}
+
+			for _, env1 := range container_details.Container.Config.Env {
+				env_found := false
+				for _, env2 := range required_service.Container.Config.Env {
+					if env1 == env2 {
+						env_found = true
+						break
+					}
+				}
+				if env_found == false {
+					found = false
+				}
+			}
+
 		}
-		*/
 
 		if found {
 			found_containers = append(found_containers, container_details)

@@ -96,6 +96,135 @@ func (s *MySuite) TestFindMatchingContaineres_Name_Mismatch(c *C) {
 	c.Assert(len(remaining_containers), Equals, 1)
 }
 
+func (s *MySuite) TestFindMatchingContaineres_Env_Match(c *C) {
+	var ec = make([]ContainerDetails, 1, 1)
+	ec[0].Container = new(docker.Container)
+	ec[0].Container.Config = new(docker.Config)
+	ec[0].Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	ec[0].Container.Config.Hostname = "foo.bar.com"
+	ec[0].Container.Name = "the-name"
+	ec[0].Container.Config.Env = []string{"ENV=staging", "FOO=BAR"}
+
+	var required_service ServiceConfiguration
+	required_service.Container = new(ContainerConfiguration)
+	required_service.Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	required_service.Container.Config.Hostname = "foo.bar.com"
+	required_service.Container.Config.Env = []string{"ENV=staging", "FOO=BAR"}
+	required_service.Name = "the-name"
+
+	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
+
+	c.Assert(len(found_containers), Equals, 1)
+	c.Assert(len(remaining_containers), Equals, 0)
+}
+
+func (s *MySuite) TestFindMatchingContaineres_Env_Mismatch(c *C) {
+	var ec = make([]ContainerDetails, 1, 1)
+	ec[0].Container = new(docker.Container)
+	ec[0].Container.Config = new(docker.Config)
+	ec[0].Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	ec[0].Container.Config.Hostname = "foo.bar.com"
+	ec[0].Container.Name = "the-name"
+	ec[0].Container.Config.Env = []string{"ENV=staging", "FOO=BAR"}
+
+	var required_service ServiceConfiguration
+	required_service.Container = new(ContainerConfiguration)
+	required_service.Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	required_service.Container.Config.Hostname = "foo.bar.com"
+	required_service.Container.Config.Env = []string{"ENV=prod", "FOO=BAR"}
+	required_service.Name = "the-name"
+
+	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
+
+	c.Assert(len(found_containers), Equals, 0)
+	c.Assert(len(remaining_containers), Equals, 1)
+}
+
+func (s *MySuite) TestFindMatchingContaineres_Env_Mismatch2(c *C) {
+	var ec = make([]ContainerDetails, 1, 1)
+	ec[0].Container = new(docker.Container)
+	ec[0].Container.Config = new(docker.Config)
+	ec[0].Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	ec[0].Container.Config.Hostname = "foo.bar.com"
+	ec[0].Container.Name = "the-name"
+	ec[0].Container.Config.Env = []string{"ENV=staging", "FOO=BAR"}
+
+	var required_service ServiceConfiguration
+	required_service.Container = new(ContainerConfiguration)
+	required_service.Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	required_service.Container.Config.Hostname = "foo.bar.com"
+	required_service.Container.Config.Env = []string{"FOO=BAR"}
+	required_service.Name = "the-name"
+
+	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
+
+	c.Assert(len(found_containers), Equals, 0)
+	c.Assert(len(remaining_containers), Equals, 1)
+}
+
+func (s *MySuite) TestFindMatchingContaineres_Env_Mismatch3(c *C) {
+	var ec = make([]ContainerDetails, 1, 1)
+	ec[0].Container = new(docker.Container)
+	ec[0].Container.Config = new(docker.Config)
+	ec[0].Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	ec[0].Container.Config.Hostname = "foo.bar.com"
+	ec[0].Container.Name = "the-name"
+	ec[0].Container.Config.Env = []string{"FOO=BAR"}
+
+	var required_service ServiceConfiguration
+	required_service.Container = new(ContainerConfiguration)
+	required_service.Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	required_service.Container.Config.Hostname = "foo.bar.com"
+	required_service.Container.Config.Env = []string{"ENV=staging", "FOO=BAR"}
+	required_service.Name = "the-name"
+
+	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
+
+	c.Assert(len(found_containers), Equals, 0)
+	c.Assert(len(remaining_containers), Equals, 1)
+}
+
+func (s *MySuite) TestFindMatchingContaineres_Env_Mismatch4(c *C) {
+	var ec = make([]ContainerDetails, 1, 1)
+	ec[0].Container = new(docker.Container)
+	ec[0].Container.Config = new(docker.Config)
+	ec[0].Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	ec[0].Container.Config.Hostname = "foo.bar.com"
+	ec[0].Container.Name = "the-name"
+	ec[0].Container.Config.Env = []string{"FOO=BAR"}
+
+	var required_service ServiceConfiguration
+	required_service.Container = new(ContainerConfiguration)
+	required_service.Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	required_service.Container.Config.Hostname = "foo.bar.com"
+	required_service.Name = "the-name"
+
+	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
+
+	c.Assert(len(found_containers), Equals, 0)
+	c.Assert(len(remaining_containers), Equals, 1)
+}
+
+func (s *MySuite) TestFindMatchingContaineres_Env_Mismatch5(c *C) {
+	var ec = make([]ContainerDetails, 1, 1)
+	ec[0].Container = new(docker.Container)
+	ec[0].Container.Config = new(docker.Config)
+	ec[0].Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	ec[0].Container.Config.Hostname = "foo.bar.com"
+	ec[0].Container.Name = "the-name"
+
+	var required_service ServiceConfiguration
+	required_service.Container = new(ContainerConfiguration)
+	required_service.Container.Config.Image = "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2"
+	required_service.Container.Config.Hostname = "foo.bar.com"
+	required_service.Container.Config.Env = []string{"ENV=staging", "FOO=BAR"}
+	required_service.Name = "the-name"
+
+	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
+
+	c.Assert(len(found_containers), Equals, 0)
+	c.Assert(len(remaining_containers), Equals, 1)
+}
 func (s *MySuite) TestFindMatchingContaineres_Revision_Mismatch(c *C) {
 	var ec = make([]ContainerDetails, 1, 1)
 	ec[0].Container = new(docker.Container)
