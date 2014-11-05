@@ -75,11 +75,16 @@ func FindMatchingContainers(existing_containers []ContainerDetails, required_ser
 		}
 
 		if required_service.Container.Config.Env != nil || container_details.Container.Config.Env != nil {
-
+			// Check first that all required envs are found in the suspect container
 			for _, env1 := range required_service.Container.Config.Env {
+				env1p := strings.Split(env1, "=")
+
 				env_found := false
+
 				for _, env2 := range container_details.Container.Config.Env {
-					if env1 == env2 {
+					env2p := strings.Split(env2, "=")
+
+					if env1p[0] == env2p[0] && env1p[1] == env2p[1] {
 						env_found = true
 						break
 					}
@@ -89,16 +94,30 @@ func FindMatchingContainers(existing_containers []ContainerDetails, required_ser
 				}
 			}
 
+			// Then check the other way around: verify that all envs in the suspect container are found in the required container
 			for _, env1 := range container_details.Container.Config.Env {
-				env_found := false
+				env1p := strings.Split(env1, "=")
+
+				key_found := false
+				env_match := false
+
 				for _, env2 := range required_service.Container.Config.Env {
-					if env1 == env2 {
-						env_found = true
+					env2p := strings.Split(env2, "=")
+
+					if env1p[0] == env2p[0] {
+						key_found = true
+						if env1p[1] == env2p[1] {
+							env_match = true
+						}
 						break
 					}
 				}
-				if env_found == false {
-					found = false
+				if key_found == true {
+
+					if env_match == false {
+						found = false
+					} else {
+					}
 				}
 			}
 
