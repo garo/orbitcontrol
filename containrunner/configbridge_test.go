@@ -133,6 +133,41 @@ Content-Type: text/html
 
 }
 
+func (s *ConfigBridgeSuite) TestUploadOrbitConfigurationToEtcdWhichRemovesAService(c *C) {
+	var ct Containrunner
+	ct.EtcdBasePath = "/test"
+
+	orbitConfiguration, err := ct.LoadOrbitConfigurationFromFiles("/Development/go/src/github.com/garo/orbitcontrol/testdata")
+	c.Assert(err, IsNil)
+
+	s.etcd.DeleteDir("/test/")
+
+	err = ct.UploadOrbitConfigurationToEtcd(orbitConfiguration, s.etcd)
+	c.Assert(err, IsNil)
+
+	// Verify that this service exists before we try to delete it in the second step
+	res, err := s.etcd.Get("/test/services/ubuntu/config", true, true)
+	c.Assert(err, IsNil)
+	c.Assert(res.Node.Value, Equals, "{\"Name\":\"ubuntu\",\"EndpointPort\":3500,\"Checks\":[{\"Type\":\"http\",\"Url\":\"http://127.0.0.1:3500/check\",\"HttpHost\":\"\",\"Username\":\"\",\"Password\":\"\",\"HostPort\":\"\",\"DummyResult\":false,\"ExpectHttpStatus\":\"\",\"ExpectString\":\"\"}],\"Container\":{\"HostConfig\":{\"Binds\":[\"/tmp:/data\"],\"ContainerIDFile\":\"\",\"LxcConf\":null,\"Privileged\":false,\"PortBindings\":null,\"Links\":null,\"PublishAllPorts\":false,\"Dns\":null,\"DnsSearch\":null,\"VolumesFrom\":null,\"NetworkMode\":\"host\"},\"Config\":{\"Hostname\":\"\",\"Domainname\":\"\",\"User\":\"\",\"Memory\":0,\"MemorySwap\":0,\"CpuShares\":0,\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"PortSpecs\":null,\"ExposedPorts\":null,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"NODE_ENV=vagrant\"],\"Cmd\":null,\"Dns\":null,\"Image\":\"ubuntu\",\"Volumes\":null,\"VolumesFrom\":\"\",\"WorkingDir\":\"\",\"Entrypoint\":null,\"NetworkDisabled\":false}},\"Revision\":null,\"SourceControl\":{\"Origin\":\"github.com/Applifier/ubuntu\",\"OAuthToken\":\"\",\"CIUrl\":\"\"}}")
+
+	orbitConfiguration, err = ct.LoadOrbitConfigurationFromFiles("/Development/go/src/github.com/garo/orbitcontrol/testdata")
+	c.Assert(err, IsNil)
+
+	// Delete the service from the orbitConfiguration...
+	delete(orbitConfiguration.MachineConfigurations["testtag"].Services, "ubuntu")
+
+	// ...so it should be deleted by the following UploadOrbitConfigurationToEtcd call
+	err = ct.UploadOrbitConfigurationToEtcd(orbitConfiguration, s.etcd)
+	c.Assert(err, IsNil)
+
+	res, err = s.etcd.Get("/test/machineconfigurations/tags/testtag/services/ubuntu", true, true)
+	fmt.Printf("removed service error: %+v\n", err)
+	fmt.Printf("removed service res: %+v\n", res)
+
+	c.Assert(err, Not(IsNil))
+
+}
+
 func (s *ConfigBridgeSuite) TestMergeServiceConfig(c *C) {
 	defaults := new(ServiceConfiguration)
 	overwrite := new(ServiceConfiguration)

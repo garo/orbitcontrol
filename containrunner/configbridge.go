@@ -336,6 +336,20 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 
 		}
 
+		// First check if a service needs to be removed
+		key := c.EtcdBasePath + "/machineconfigurations/tags/" + tag + "/services"
+		res, err := etcdClient.Get(key, true, true)
+		if err == nil {
+			for _, node := range res.Node.Nodes {
+				name := string(node.Key[len(res.Node.Key)+1:])
+				_, exists := mc.Services[name]
+				if exists == false {
+					fmt.Printf("Service %s does not exists any more, deleting it.\n", name)
+					etcdClient.Delete(node.Key, true)
+				}
+			}
+		}
+
 		for name, boundService := range mc.Services {
 			str := "{}"
 			if boundService.Overwrites != nil {
