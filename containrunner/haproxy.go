@@ -42,8 +42,10 @@ type HAProxyConfiguration struct {
 }
 
 type BackendParameters struct {
-	Nickname string
-	HostPort string
+	Nickname             string
+	HostPort             string
+	Revision             string
+	ServiceConfiguration ServiceConfiguration
 }
 
 type BackendParametersByNickname []BackendParameters
@@ -267,10 +269,12 @@ func (hac *HAProxySettings) GetNewConfig(cbi ConfigBridgeInterface, configuratio
 			}
 
 			var backends []BackendParameters
-			for hostport, _ := range backend_servers {
+			for hostport, endpointInfo := range backend_servers {
 				backends = append(backends, BackendParameters{
-					Nickname: service_name + "-" + hostport,
-					HostPort: hostport,
+					Nickname:             service_name + "-" + hostport,
+					HostPort:             hostport,
+					Revision:             endpointInfo.Revision,
+					ServiceConfiguration: endpointInfo.ServiceConfiguration,
 				})
 			}
 

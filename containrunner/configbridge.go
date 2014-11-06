@@ -75,6 +75,7 @@ type ServiceConfiguration struct {
 	Container     *ContainerConfiguration
 	Revision      *ServiceRevision
 	SourceControl *SourceControl
+	Attributes    map[string]string
 }
 
 type SourceControl struct {

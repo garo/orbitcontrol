@@ -87,6 +87,48 @@ listen test 127.0.0.1:80
 
 }
 
+func (s *HAProxySuite) TestGetNewConfig2(c *C) {
+	var settings HAProxySettings
+
+	moc := ConfigBridgeInterfaceMock{
+		func(service_name string) (map[string]*EndpointInfo, error) {
+			endpoints := make(map[string]*EndpointInfo)
+			endpoints["10.0.0.3:80"] = &EndpointInfo{}
+			endpoints["10.0.0.3:80"].Revision = "rev"
+			endpoints["10.0.0.3:80"].ServiceConfiguration.Name = "name"
+			endpoints["10.0.0.3:80"].ServiceConfiguration.Attributes = make(map[string]string)
+			endpoints["10.0.0.3:80"].ServiceConfiguration.Attributes["weight"] = "8"
+			endpoints["10.0.0.4:80"] = &EndpointInfo{}
+
+			return endpoints, nil
+		},
+	}
+
+	configuration := NewHAProxyConfiguration()
+	configuration.Template = `
+defaults
+	contimeout 5000
+	clitimeout 60000
+	srvtimeout 60000
+
+listen test 127.0.0.1:80
+	mode http
+{{range Endpoints "test"}}
+	HostPort: {{.HostPort}}
+	Name: {{.ServiceConfiguration.Name}}
+	Revision: {{.Revision}}
+    Weight: {{if .ServiceConfiguration.Attributes.weight}}{{.ServiceConfiguration.Attributes.weight}}{{else}}10{{end}}
+{{end}}
+
+`
+	str, err := settings.GetNewConfig(moc, configuration)
+	c.Assert(err, IsNil)
+	fmt.Printf("********************\n")
+	fmt.Printf(str)
+	fmt.Printf("********************\n")
+
+}
+
 func (s *HAProxySuite) TestReloadHAProxyOk(c *C) {
 	var settings HAProxySettings
 	settings.HAProxyReloadCommand = "/bin/true"

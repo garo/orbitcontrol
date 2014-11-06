@@ -28,6 +28,7 @@
 	"SourceControl":{
 		"Origin":"github.com/Applifier/ubuntu",
 		"OAuth":""
-	}
+	},
+	"Attributes":{}
 }
 
