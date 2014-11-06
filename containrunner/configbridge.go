@@ -584,6 +584,16 @@ func MergeServiceConfig(dst ServiceConfiguration, overwrite ServiceConfiguration
 		dst.Checks = overwrite.Checks
 	}
 
+	if overwrite.Attributes != nil {
+		if dst.Attributes == nil {
+			dst.Attributes = overwrite.Attributes
+		} else {
+			for key, value := range overwrite.Attributes {
+				dst.Attributes[key] = value
+			}
+		}
+	}
+
 	return dst
 }
 

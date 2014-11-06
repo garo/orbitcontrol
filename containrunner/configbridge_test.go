@@ -201,7 +201,10 @@ func (s *ConfigBridgeSuite) TestMergeServiceConfig(c *C) {
 			"type" : "http",
 			"url" : "http://localhost:3500/check"
 		}
-	]
+	],
+	"Attributes" : {
+		
+	}
 }
 `), defaults)
 
@@ -222,7 +225,10 @@ func (s *ConfigBridgeSuite) TestMergeServiceConfig(c *C) {
 			"type" : "http",
 			"url" : "http://localhost:8002/check"
 		}
-	]
+	],
+	"Attributes" : {
+		"foo" : "bar"
+	}
 }
 `), overwrite)
 
@@ -237,6 +243,7 @@ func (s *ConfigBridgeSuite) TestMergeServiceConfig(c *C) {
 	c.Assert(merged.Container.Config.Hostname, Equals, "ubuntu-test")
 	c.Assert(merged.Checks[0].Type, Equals, "http")
 	c.Assert(merged.Checks[0].Url, Equals, "http://localhost:8002/check")
+	c.Assert(merged.Attributes["foo"], Equals, "bar")
 
 }
 
