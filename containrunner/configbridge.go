@@ -101,7 +101,8 @@ type ConfigResultEtcdPublisher struct {
 
 // Stored inside file /orbit/services/<service>/endpoints/<host:port>
 type EndpointInfo struct {
-	Revision string
+	Revision             string
+	ServiceConfiguration ServiceConfiguration
 }
 
 // Log events

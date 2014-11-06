@@ -89,7 +89,8 @@ func CheckIntervalWorker(configurations <-chan MachineConfiguration, jobsChannel
 					cc.Checks = service.Checks
 					if service.Container != nil {
 						cc.EndpointInfo = &EndpointInfo{
-							Revision: service.GetRevision(),
+							Revision:             service.GetRevision(),
+							ServiceConfiguration: service,
 						}
 					}
 					//fmt.Printf("Pushing check %+v\n", cc)

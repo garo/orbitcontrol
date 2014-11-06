@@ -477,7 +477,10 @@ func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherServiceWithEndpointInfo
 	if err != nil {
 		panic(err)
 	}
-	c.Assert(res.Node.Value, Equals, "{\"Revision\":\"asdf\"}")
+	endpointInfo := EndpointInfo{}
+	err = json.Unmarshal([]byte(res.Node.Value), &endpointInfo)
+	c.Assert(err, IsNil)
+	c.Assert(endpointInfo.Revision, Equals, "asdf")
 
 	// Note that TTL counts down to zero, so if the machine is under heavy load then the TTL might not be anymore 5
 	c.Assert(res.Node.TTL, Equals, int64(5))
