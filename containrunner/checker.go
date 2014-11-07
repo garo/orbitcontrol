@@ -275,6 +275,10 @@ func CheckTcpService(check ServiceCheck) bool {
 
 	timeout := time.Millisecond * 50
 
+	if check.ConnectTimeout > 0 {
+		timeout = time.Duration(check.ConnectTimeout) * time.Millisecond
+	}
+
 	var deadline = time.Now().Add(timeout)
 	conn, err := net.DialTimeout("tcp", check.HostPort, timeout)
 	if conn != nil {
