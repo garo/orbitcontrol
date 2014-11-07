@@ -18,6 +18,8 @@ type ServiceCheck struct {
 	DummyResult      bool
 	ExpectHttpStatus string
 	ExpectString     string
+	ConnectTimeout   int
+	ResponseTimeout  int
 }
 
 type CheckResult struct {
@@ -203,6 +205,14 @@ func CheckHttpService(check ServiceCheck) (ok bool) {
 	config := &TimeoutConfig{
 		ConnectTimeout:   300 * time.Millisecond,
 		ReadWriteTimeout: 300 * time.Millisecond,
+	}
+
+	if check.ConnectTimeout > 0 {
+		config.ConnectTimeout = time.Duration(check.ConnectTimeout) * time.Millisecond
+	}
+
+	if check.ResponseTimeout > 0 {
+		config.ReadWriteTimeout = time.Duration(check.ResponseTimeout) * time.Millisecond
 	}
 
 	client := &http.Client{
