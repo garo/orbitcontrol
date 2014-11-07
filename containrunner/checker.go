@@ -27,6 +27,7 @@ type CheckResult struct {
 	EndpointInfo *EndpointInfo
 }
 
+// Rules how to check if a service is up or not
 type ServiceChecks struct {
 	ServiceName  string
 	EndpointPort int
@@ -42,16 +43,11 @@ type CheckEngine struct {
 }
 
 func (ce *CheckEngine) Start(workers int, configResultPublisher ConfigResultPublisher, endpointAddress string, intervalInMs int) {
-	ce.jobs = make(chan ServiceChecks, 100)
 	ce.results = make(chan CheckResult, 100)
 	ce.configurations = make(chan MachineConfiguration, 1)
 	ce.endpointAddress = endpointAddress
 
-	for w := 1; w <= workers; w++ {
-		go IndividualCheckWorker(w, ce.jobs, ce.results, endpointAddress)
-	}
-
-	go CheckIntervalWorker(ce.configurations, ce.jobs, intervalInMs)
+	go CheckConfigUpdateWorker(ce.configurations, ce.results, endpointAddress)
 	go PublishCheckResultWorker(ce.results, configResultPublisher)
 
 }
@@ -66,40 +62,65 @@ func (ce *CheckEngine) PushNewConfiguration(configuration MachineConfiguration) 
 	ce.configurations <- configuration
 }
 
-func CheckIntervalWorker(configurations <-chan MachineConfiguration, jobsChannel chan<- ServiceChecks, intervalInMs int) {
-	var configuration *MachineConfiguration
-	alive := true
-	for alive {
-		select {
-		case newConf, alive := <-configurations:
-			if alive {
-				//fmt.Printf("Got new configuration: %+v\n", newConf)
+func CheckConfigUpdateWorker(configurations <-chan MachineConfiguration, results chan<- CheckResult, endpointAddress string) {
 
-				configuration = &newConf
-			}
-		default:
-			if configuration != nil {
-				//fmt.Printf("services: %+v\n", configuration.Services)
+	serviceCheckWorkerChannels := make(map[string]chan ServiceChecks)
 
-				for name, boundService := range configuration.Services {
-					service := boundService.GetConfig()
-					var cc ServiceChecks
-					cc.ServiceName = name
-					cc.EndpointPort = service.EndpointPort
-					cc.Checks = service.Checks
-					if service.Container != nil {
-						cc.EndpointInfo = &EndpointInfo{
-							Revision:             service.GetRevision(),
-							ServiceConfiguration: service,
-						}
-					}
-					//fmt.Printf("Pushing check %+v\n", cc)
-					jobsChannel <- cc
+	var configuration MachineConfiguration
+	for {
+		//fmt.Printf("pretick on %s\n", endpointAddress)
+		newConf, alive := <-configurations
+		//fmt.Printf("tick. Alive: %d, endpoint: %s\n", alive, endpointAddress)
+		//select {
+		//case newConf, alive := <-configurations:
+		if alive {
+			fmt.Printf("Got new configuration: %+v\n", newConf)
+
+			configuration = newConf
+
+			for name, c := range serviceCheckWorkerChannels {
+				_, found := configuration.Services[name]
+				if !found {
+					// Service has been removed, close the channel
+					fmt.Printf("Removing check %s from active duty\n", name)
+					close(c)
+					delete(serviceCheckWorkerChannels, name)
 				}
 			}
-		}
-		time.Sleep(time.Millisecond * time.Duration(intervalInMs))
 
+			for name, boundService := range configuration.Services {
+				_, found := serviceCheckWorkerChannels[name]
+				if !found {
+					// New service
+					fmt.Printf("Creating CheckServiceWorker for service %s\n", name)
+					serviceCheckWorkerChannels[name] = make(chan ServiceChecks)
+					go CheckServiceWorker(serviceCheckWorkerChannels[name], results, endpointAddress)
+				}
+
+				service := boundService.GetConfig()
+				var cc ServiceChecks
+				cc.ServiceName = name
+				cc.EndpointPort = service.EndpointPort
+				cc.Checks = service.Checks
+				if service.Container != nil {
+					cc.EndpointInfo = &EndpointInfo{
+						Revision:             service.GetRevision(),
+						ServiceConfiguration: service,
+					}
+				}
+
+				serviceCheckWorkerChannels[name] <- cc
+			}
+		} else {
+			fmt.Printf("Closing CheckConfigUpdateWorker (got %d services)\n", len(serviceCheckWorkerChannels))
+			for name, c := range serviceCheckWorkerChannels {
+				fmt.Printf("Closing channel %s because we're closing CheckConfigUpdateWorker for %s\n", name, endpointAddress)
+				close(c)
+			}
+			return
+		}
+		//}
+		//	time.Sleep(time.Millisecond * time.Duration(500))
 	}
 
 }
@@ -114,35 +135,50 @@ func PublishCheckResultWorker(results chan CheckResult, configResultPublisher Co
 	}
 }
 
-func IndividualCheckWorker(id int, jobs <-chan ServiceChecks, results chan<- CheckResult, endpointAddress string) {
-	for j := range jobs {
-		var result CheckResult
-		result.ServiceName = j.ServiceName
-		result.Endpoint = fmt.Sprintf("%s:%d", endpointAddress, j.EndpointPort)
-		result.Ok = CheckService(j.Checks)
-		result.EndpointInfo = j.EndpointInfo
-		results <- result
-	}
-}
+func CheckServiceWorker(serviceChecksChannel <-chan ServiceChecks, results chan<- CheckResult, endpointAddress string) {
 
-func CheckService(checks []ServiceCheck) (ok bool) {
+	var serviceChecks ServiceChecks
 
-	for _, check := range checks {
-		switch check.Type {
-		case "dummy":
-			ok = CheckDummyService(check)
-		case "http":
-			ok = CheckHttpService(check)
-		case "tcp":
-			ok = CheckTcpService(check)
+	alive := true
+	for alive {
+		select {
+		case newServiceChecks, alive := <-serviceChecksChannel:
+			if !alive {
+				fmt.Printf("Stopping CheckServiceWorker for service %s\n", serviceChecks.ServiceName)
+				return
+			} else {
+				fmt.Printf("New check configuration for service %s\n", serviceChecks.ServiceName)
+			}
+			serviceChecks = newServiceChecks
+
+		default:
+			//fmt.Printf("Checking if service %s is up\n", serviceChecks.ServiceName)
+			var result CheckResult
+			result.ServiceName = serviceChecks.ServiceName
+			result.Endpoint = fmt.Sprintf("%s:%d", endpointAddress, serviceChecks.EndpointPort)
+			result.EndpointInfo = serviceChecks.EndpointInfo
+			result.Ok = true
+			ok := true
+			for _, check := range serviceChecks.Checks {
+				switch check.Type {
+				case "dummy":
+					ok = CheckDummyService(check)
+				case "http":
+					ok = CheckHttpService(check)
+				case "tcp":
+					ok = CheckTcpService(check)
+				}
+				if !ok {
+					result.Ok = false
+				}
+			}
+
+			results <- result
 		}
 
-		if !ok {
-			return false
-		}
+		time.Sleep(time.Millisecond * time.Duration(100))
 	}
 
-	return ok
 }
 
 type TimeoutConfig struct {

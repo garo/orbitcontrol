@@ -27,12 +27,18 @@ func (s *CheckerSuite) TestDummyService(c *C) {
 	c.Assert(CheckDummyService(checkFalse), Equals, false)
 }
 
-func (s *CheckerSuite) TestCheckService(c *C) {
+func (s *CheckerSuite) TestCheckServiceWorker(c *C) {
+	serviceChecksChannel := make(chan ServiceChecks)
+	results := make(chan CheckResult, 10)
 
-	checks := []ServiceCheck{{Type: "dummy", DummyResult: true}}
+	serviceChecks := ServiceChecks{}
+	serviceChecks.Checks = []ServiceCheck{{Type: "dummy", DummyResult: true}}
 
-	ok := CheckService(checks)
-	c.Assert(ok, Equals, true)
+	go CheckServiceWorker(serviceChecksChannel, results, "10.0.0.1")
+	serviceChecksChannel <- serviceChecks
+	result := <-results
+
+	c.Assert(result.Ok, Equals, true)
 }
 
 func (s *CheckerSuite) TestTCPService(c *C) {
@@ -101,24 +107,6 @@ func (s *CheckerSuite) TestHttpServiceNotResponding(c *C) {
 	c.Assert(CheckHttpService(checkFalse), Equals, false)
 }
 
-func (s *CheckerSuite) TestIndividualCheckWorker(c *C) {
-	checkFalse := ServiceCheck{Type: "http", Url: "http://localhost:10/returnFoobar", ExpectString: "OK"}
-
-	jobs := make(chan ServiceChecks, 10)
-	results := make(chan CheckResult, 10)
-
-	go IndividualCheckWorker(1, jobs, results, "10.0.0.0")
-	jobs <- ServiceChecks{"failingService", 55, []ServiceCheck{checkFalse}, nil}
-	close(jobs)
-
-	result := <-results
-
-	c.Assert(result.Ok, Equals, false)
-	c.Assert(result.ServiceName, Equals, "failingService")
-	c.Assert(result.Endpoint, Equals, "10.0.0.0:55")
-
-}
-
 type TestConfigResultPublisher struct {
 }
 
@@ -140,15 +128,15 @@ func (s *CheckerSuite) TestPublishCheckResultWorker(c *C) {
 
 }
 
-func (s *CheckerSuite) TestCheckIntervalWorker(c *C) {
+func (s *CheckerSuite) TestCheckConfigUpdateWorker(c *C) {
 
-	configurations := make(chan MachineConfiguration, 1)
-	jobsChannel := make(chan ServiceChecks, 100)
+	configurations := make(chan MachineConfiguration)
+	resultsChannel := make(chan CheckResult, 1)
 
 	var mc MachineConfiguration
 	mc.Services = make(map[string]BoundService)
 	v := ServiceConfiguration{}
-	v.Name = "myContainer"
+	v.Name = "myService"
 	v.Checks = []ServiceCheck{{
 		Type:             "dummyCheck",
 		Url:              "",
@@ -161,15 +149,54 @@ func (s *CheckerSuite) TestCheckIntervalWorker(c *C) {
 		ExpectString:     ""}}
 	boundService := BoundService{}
 	boundService.DefaultConfiguration = v
-	mc.Services["myContainer"] = boundService
+	mc.Services["myService"] = boundService
 
-	go CheckIntervalWorker(configurations, jobsChannel, 50)
+	go CheckConfigUpdateWorker(configurations, resultsChannel, "10.0.0.1")
 	configurations <- mc
-	time.Sleep(time.Millisecond * 80)
+	result := <-resultsChannel
 	close(configurations)
-	cc := <-jobsChannel
 
-	c.Assert(cc.ServiceName, Equals, "myContainer")
-	c.Assert(cc.Checks[0].Type, Equals, "dummyCheck")
+	c.Assert(result.ServiceName, Equals, "myService")
+	c.Assert(result.Ok, Equals, true)
+}
+
+func (s *CheckerSuite) TestCheckConfigUpdateWorkerWhenServiceIsRemoved(c *C) {
+	fmt.Println("********* TestCheckConfigUpdateWorkerWhenServiceIsRemoved start ")
+
+	configurations := make(chan MachineConfiguration, 1)
+	resultsChannel := make(chan CheckResult, 1)
+
+	var mc MachineConfiguration
+	mc.Services = make(map[string]BoundService)
+	v := ServiceConfiguration{}
+	v.Name = "myService"
+	v.Checks = []ServiceCheck{{
+		Type:             "dummyCheck",
+		Url:              "",
+		HttpHost:         "",
+		Username:         "",
+		Password:         "",
+		HostPort:         "",
+		DummyResult:      true,
+		ExpectHttpStatus: "",
+		ExpectString:     ""}}
+	boundService := BoundService{}
+	boundService.DefaultConfiguration = v
+	mc.Services["myService"] = boundService
+
+	go CheckConfigUpdateWorker(configurations, resultsChannel, "TestCheckConfigUpdateWorkerWhenServiceIsRemoved")
+	configurations <- mc
+	time.Sleep(time.Millisecond * 150)
+	fmt.Println("Removing service...")
+	delete(mc.Services, "myService")
+	configurations <- mc
+	time.Sleep(time.Millisecond * 200)
+	fmt.Println("Closing CheckConfigUpdateWorker from the test")
+	close(configurations)
+	result := <-resultsChannel
+
+	c.Assert(result.ServiceName, Equals, "myService")
+	c.Assert(result.Ok, Equals, true)
+	fmt.Println("********* TestCheckConfigUpdateWorkerWhenServiceIsRemoved end ")
 
 }
