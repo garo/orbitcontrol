@@ -48,6 +48,8 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 	webserver.Containrunner = &containrunner
 	webserver.Start()
 
+	somethingChanged := false
+
 	quit := false
 	var lastConverge time.Time
 	for !quit {
@@ -62,6 +64,8 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 				exitChannel <- true
 			}
 		default:
+			somethingChanged = false
+
 			newConfiguration.MachineConfiguration, err = containrunner.GetMachineConfigurationByTags(etcdClient, containrunner.Tags)
 			if err != nil {
 				if strings.HasPrefix(err.Error(), "100:") {
@@ -81,9 +85,27 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 
 			newConfiguration.ServiceBackends, err = containrunner.GetAllServiceEndpoints()
 
-			if !DeepEqual(currentConfiguration, newConfiguration) {
+			if !DeepEqual(currentConfiguration.MachineConfiguration, newConfiguration.MachineConfiguration) {
+				log.Info(LogString("New Machine Configuration. Pushing changes to check engine"))
 
-				log.Info(LogString("MainExecutionLoop got new configuration"))
+				somethingChanged = true
+				ConvergeContainers(newConfiguration.MachineConfiguration, docker)
+
+				// This must be done after the containers have been converged so that the Check Engine
+				// can report the correct container revision
+				checkEngine.PushNewConfiguration(newConfiguration.MachineConfiguration)
+
+				lastConverge = time.Now()
+
+			} else if time.Now().Sub(lastConverge) > time.Second*10 {
+				ConvergeContainers(newConfiguration.MachineConfiguration, docker)
+				lastConverge = time.Now()
+
+			}
+
+			if !DeepEqual(currentConfiguration, newConfiguration) && newConfiguration.MachineConfiguration.HAProxyConfiguration != nil {
+				somethingChanged = true
+
 				if !DeepEqual(currentConfiguration.MachineConfiguration, newConfiguration.MachineConfiguration) {
 					fmt.Fprintf(os.Stderr, "Difference found in MachineConfiguration\n")
 					if !DeepEqual(currentConfiguration.MachineConfiguration.HAProxyConfiguration, newConfiguration.MachineConfiguration.HAProxyConfiguration) {
@@ -119,18 +141,10 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 					containrunner.HAProxySettings.ConvergeHAProxy(&runtimeConfiguration, &oldConfiguration)
 				}(&containrunner, newConfiguration, currentConfiguration)
 
+			}
+
+			if somethingChanged {
 				currentConfiguration = newConfiguration
-				ConvergeContainers(currentConfiguration.MachineConfiguration, docker)
-
-				// This must be done after the containers have been converged so that the Check Engine
-				// can report the correct container revision
-				checkEngine.PushNewConfiguration(currentConfiguration.MachineConfiguration)
-
-				lastConverge = time.Now()
-			} else if time.Now().Sub(lastConverge) > time.Second*10 {
-				ConvergeContainers(currentConfiguration.MachineConfiguration, docker)
-				lastConverge = time.Now()
-
 			}
 
 		}
