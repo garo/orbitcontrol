@@ -73,7 +73,7 @@ func CheckIntervalWorker(configurations <-chan MachineConfiguration, jobsChannel
 		select {
 		case newConf, alive := <-configurations:
 			if alive {
-				fmt.Printf("Got new configuration: %+v\n", newConf)
+				//fmt.Printf("Got new configuration: %+v\n", newConf)
 
 				configuration = &newConf
 			}
@@ -165,8 +165,8 @@ func CheckHttpService(check ServiceCheck) (ok bool) {
 	ok = true
 
 	config := &TimeoutConfig{
-		ConnectTimeout:   100 * time.Millisecond,
-		ReadWriteTimeout: 100 * time.Millisecond,
+		ConnectTimeout:   300 * time.Millisecond,
+		ReadWriteTimeout: 300 * time.Millisecond,
 	}
 
 	client := &http.Client{

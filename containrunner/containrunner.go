@@ -1,7 +1,6 @@
 package containrunner
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/coreos/go-etcd/etcd"
 	"github.com/op/go-logging"
@@ -22,6 +21,16 @@ type Containrunner struct {
 	EtcdBasePath      string
 }
 
+type RuntimeConfiguration struct {
+	MachineConfiguration MachineConfiguration
+
+	// First string is service name, second string is backend host:port
+	ServiceBackends map[string]map[string]*EndpointInfo `json:"-"`
+
+	// Locally required service groups in haproxy, should be refactored away from this struct
+	LocallyRequiredServices map[string]map[string]*EndpointInfo `json:"-" DeepEqual:"skip"`
+}
+
 func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 
 	log.Info(LogString("MainExecutionLoop started"))
@@ -31,8 +40,8 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 	var checkEngine CheckEngine
 	checkEngine.Start(4, &ConfigResultEtcdPublisher{10, containrunner.EtcdBasePath, containrunner.EtcdEndpoints, nil}, containrunner.MachineAddress, containrunner.CheckIntervalInMs)
 
-	var machineConfiguration MachineConfiguration
-	var newMachineConfiguration MachineConfiguration
+	var currentConfiguration RuntimeConfiguration
+	var newConfiguration RuntimeConfiguration
 	var err error
 
 	var webserver Webserver
@@ -53,7 +62,7 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 				exitChannel <- true
 			}
 		default:
-			newMachineConfiguration, err = containrunner.GetMachineConfigurationByTags(etcdClient, containrunner.Tags)
+			newConfiguration.MachineConfiguration, err = containrunner.GetMachineConfigurationByTags(etcdClient, containrunner.Tags)
 			if err != nil {
 				if strings.HasPrefix(err.Error(), "100:") {
 					log.Info(LogString("Error:" + err.Error()))
@@ -70,34 +79,58 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 				continue
 			}
 
-			if !DeepEqual(machineConfiguration, newMachineConfiguration) {
+			newConfiguration.ServiceBackends, err = containrunner.GetAllServiceEndpoints()
+
+			if !DeepEqual(currentConfiguration, newConfiguration) {
 
 				log.Info(LogString("MainExecutionLoop got new configuration"))
+				if !DeepEqual(currentConfiguration.MachineConfiguration, newConfiguration.MachineConfiguration) {
+					fmt.Fprintf(os.Stderr, "Difference found in MachineConfiguration\n")
+					if !DeepEqual(currentConfiguration.MachineConfiguration.HAProxyConfiguration, newConfiguration.MachineConfiguration.HAProxyConfiguration) {
+						fmt.Fprintf(os.Stderr, "Difference found in MachineConfiguration.HAProxyConfiguration\n")
+					}
 
-				bytes, _ := json.MarshalIndent(machineConfiguration, "", "    ")
-				fmt.Fprintf(os.Stderr, "Old configuration: %s\n", string(bytes))
-				bytes, _ = json.MarshalIndent(machineConfiguration, "", "    ")
-				fmt.Fprintf(os.Stderr, "New configuration: %s\n", string(bytes))
+					if !DeepEqual(currentConfiguration.MachineConfiguration.Services, newConfiguration.MachineConfiguration.Services) {
+						fmt.Fprintf(os.Stderr, "Difference found in MachineConfiguration.Services\n")
+					}
 
-				go func(containrunner *Containrunner, machineConfiguration MachineConfiguration, oldMachineConfiguration MachineConfiguration) {
-					containrunner.HAProxySettings.ConvergeHAProxy(containrunner, machineConfiguration.HAProxyConfiguration, oldMachineConfiguration.HAProxyConfiguration)
-				}(&containrunner, newMachineConfiguration, machineConfiguration)
+				}
+				if !DeepEqual(currentConfiguration.ServiceBackends, newConfiguration.ServiceBackends) {
+					fmt.Fprintf(os.Stderr, "Difference found in ServiceBackends\n")
 
-				machineConfiguration = newMachineConfiguration
-				ConvergeContainers(machineConfiguration, docker)
+					for service, _ := range currentConfiguration.ServiceBackends {
+						_, found := newConfiguration.ServiceBackends[service]
+						if found {
+							if !DeepEqual(currentConfiguration.ServiceBackends[service], newConfiguration.ServiceBackends[service]) {
+								fmt.Fprintf(os.Stderr, "Service %s differs between old and new (%d vs %d items)\n", service, len(currentConfiguration.ServiceBackends[service]), len(newConfiguration.ServiceBackends[service]))
+							}
+						} else {
+							fmt.Fprintf(os.Stderr, "Service %s not found in new ServiceBackends\n", service)
+						}
+					}
+				}
+
+				//bytes, _ := json.MarshalIndent(currentConfiguration, "", "    ")
+				//fmt.Fprintf(os.Stderr, "Old configuration: %s\n", string(bytes))
+				//bytes, _ = json.MarshalIndent(newConfiguration, "", "    ")
+				//fmt.Fprintf(os.Stderr, "New configuration: %s\n", string(bytes))
+
+				go func(containrunner *Containrunner, runtimeConfiguration RuntimeConfiguration, oldConfiguration RuntimeConfiguration) {
+					containrunner.HAProxySettings.ConvergeHAProxy(&runtimeConfiguration, &oldConfiguration)
+				}(&containrunner, newConfiguration, currentConfiguration)
+
+				currentConfiguration = newConfiguration
+				ConvergeContainers(currentConfiguration.MachineConfiguration, docker)
 
 				// This must be done after the containers have been converged so that the Check Engine
 				// can report the correct container revision
-				checkEngine.PushNewConfiguration(machineConfiguration)
+				checkEngine.PushNewConfiguration(currentConfiguration.MachineConfiguration)
 
 				lastConverge = time.Now()
 			} else if time.Now().Sub(lastConverge) > time.Second*10 {
-				ConvergeContainers(machineConfiguration, docker)
+				ConvergeContainers(currentConfiguration.MachineConfiguration, docker)
 				lastConverge = time.Now()
 
-				//go func(containrunner *Containrunner, machineConfiguration MachineConfiguration) {
-				//	containrunner.HAProxySettings.ConvergeHAProxy(containrunner, machineConfiguration.HAProxyConfiguration, nil)
-				//}(&containrunner, newMachineConfiguration)
 			}
 
 		}

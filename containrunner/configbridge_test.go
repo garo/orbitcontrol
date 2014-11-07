@@ -203,7 +203,7 @@ func (s *ConfigBridgeSuite) TestMergeServiceConfig(c *C) {
 		}
 	],
 	"Attributes" : {
-		
+
 	}
 }
 `), defaults)
@@ -527,6 +527,27 @@ func (s *ConfigBridgeSuite) TestGetEndpointsForService(c *C) {
 	c.Assert(err, IsNil)
 
 	c.Assert(endpoints["10.1.2.3:1234"].Revision, Equals, "foobar")
+
+}
+
+func (s *ConfigBridgeSuite) TestGetAllEndpoints(c *C) {
+
+	_, err := s.etcd.Set("/test/services/testService2/endpoints/10.1.2.3:1234", "{\"Revision\":\"foo\"}", 10)
+	c.Assert(err, IsNil)
+	_, err = s.etcd.Set("/test/services/testService2/endpoints/10.1.2.4:1234", "{\"Revision\":\"bar\"}", 10)
+	c.Assert(err, IsNil)
+	_, err = s.etcd.Set("/test/services/testService1/endpoints/10.1.2.4:1000", "{\"Revision\":\"kissa\"}", 10)
+	c.Assert(err, IsNil)
+
+	var containrunner Containrunner
+	containrunner.EtcdBasePath = "/test"
+	containrunner.EtcdEndpoints = TestingEtcdEndpoints
+	serviceEndpoints, err := containrunner.GetAllServiceEndpoints()
+	c.Assert(err, IsNil)
+
+	c.Assert(serviceEndpoints["testService1"]["10.1.2.4:1000"].Revision, Equals, "kissa")
+	c.Assert(serviceEndpoints["testService2"]["10.1.2.3:1234"].Revision, Equals, "foo")
+	c.Assert(serviceEndpoints["testService2"]["10.1.2.4:1234"].Revision, Equals, "bar")
 
 }
 

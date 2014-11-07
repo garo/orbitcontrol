@@ -113,6 +113,13 @@ type ServiceStateChangeEvent struct {
 	IsUp        bool
 }
 
+func NewMachineConfiguration() *MachineConfiguration {
+	mc := new(MachineConfiguration)
+	mc.Services = make(map[string]BoundService)
+
+	return mc
+}
+
 func (c BoundService) GetConfig() ServiceConfiguration {
 	if c.cachedMergedConfig != nil {
 		return *(c.cachedMergedConfig)
@@ -129,7 +136,7 @@ func (c BoundService) GetConfig() ServiceConfiguration {
 
 func (c *ConfigResultEtcdPublisher) PublishServiceState(serviceName string, endpoint string, ok bool, info *EndpointInfo) {
 	if c.etcd == nil {
-		fmt.Fprintf(os.Stderr, "Creating new Etcd client (%+v) so that we can report that service %s at %s is %+v\n", c.EtcdEndpoints, serviceName, endpoint, ok)
+		fmt.Fprintf(os.Stderr, "Creating new Etcd client (%+v) so that we can report that service %s at %s is %+v using ttl %d\n", c.EtcdEndpoints, serviceName, endpoint, ok, c.ttl)
 		c.etcd = GetEtcdClient(c.EtcdEndpoints)
 		fmt.Fprintf(os.Stderr, "Client created\n")
 
@@ -685,6 +692,60 @@ func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []
 	}
 
 	return configuration, nil
+}
+
+func (c Containrunner) GetAllServiceEndpoints() (map[string]map[string]*EndpointInfo, error) {
+
+	serviceBackends := make(map[string]map[string]*EndpointInfo)
+
+	etcdClient := GetEtcdClient(c.EtcdEndpoints)
+	defer func() {
+		etcdClient.Close()
+	}()
+
+	res, err := etcdClient.Get(c.EtcdBasePath+"/services/", true, true)
+	if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
+		panic(err)
+	}
+
+	if err != nil {
+		return nil, nil
+	}
+
+	// Iterate over all services...
+	for _, service := range res.Node.Nodes {
+
+		// By finding the directory which name is the service name
+		if service.Dir == true {
+			serviceName := string(service.Key[len(res.Node.Key)+1:])
+
+			// From that directory iterate over all items
+			for _, item := range service.Nodes {
+				itemName := string(item.Key[len(service.Key)+1:])
+
+				// Until you find the "endpoints" item which must be a directory
+				if itemName == "endpoints" {
+
+					// Then iterate over all files in that directory
+					for _, endpoint := range item.Nodes {
+						endpointName := string(endpoint.Key[len(item.Key)+1:])
+
+						// Which are marshalled EndpointInfo objects
+						endpointInfo := new(EndpointInfo)
+						json.Unmarshal([]byte(endpoint.Value), endpointInfo)
+
+						if _, found := serviceBackends[serviceName]; found == false {
+							serviceBackends[serviceName] = make(map[string]*EndpointInfo)
+						}
+
+						serviceBackends[serviceName][endpointName] = endpointInfo
+					}
+				}
+			}
+		}
+	}
+
+	return serviceBackends, nil
 }
 
 func (c Containrunner) GetEndpointsForService(service_name string) (map[string]*EndpointInfo, error) {
