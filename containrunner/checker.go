@@ -133,6 +133,7 @@ func GetEndpointForContainer(service ServiceConfiguration) string {
 
 func PublishCheckResultWorker(results chan CheckResult, configResultPublisher ConfigResultPublisher) {
 	for result := range results {
+		//fmt.Printf("PublishCheckResultWorker %s %s\n", result.ServiceName, result.Ok)
 		configResultPublisher.PublishServiceState(result.ServiceName, result.Endpoint, result.Ok, result.EndpointInfo)
 	}
 }
@@ -145,13 +146,14 @@ func CheckServiceWorker(serviceChecksChannel <-chan ServiceChecks, results chan<
 	for alive {
 		select {
 		case newServiceChecks, alive := <-serviceChecksChannel:
+			serviceChecks = newServiceChecks
+
 			if !alive {
 				fmt.Printf("Stopping CheckServiceWorker for service %s\n", serviceChecks.ServiceName)
 				return
 			} else {
 				fmt.Printf("New check configuration for service %s\n", serviceChecks.ServiceName)
 			}
-			serviceChecks = newServiceChecks
 
 		default:
 			//fmt.Printf("Checking if service %s is up\n", serviceChecks.ServiceName)
@@ -175,10 +177,13 @@ func CheckServiceWorker(serviceChecksChannel <-chan ServiceChecks, results chan<
 				}
 			}
 
-			results <- result
+			if ok {
+				results <- result
+			}
+
 		}
 
-		time.Sleep(time.Millisecond * time.Duration(100))
+		time.Sleep(time.Millisecond * time.Duration(1000))
 	}
 
 }

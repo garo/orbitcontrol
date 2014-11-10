@@ -118,13 +118,29 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 
 				}
 				if !DeepEqual(currentConfiguration.ServiceBackends, newConfiguration.ServiceBackends) {
-					fmt.Fprintf(os.Stderr, "Difference found in ServiceBackends\n")
+					//fmt.Fprintf(os.Stderr, "Difference found in ServiceBackends\n")
 
 					for service, _ := range currentConfiguration.ServiceBackends {
 						_, found := newConfiguration.ServiceBackends[service]
 						if found {
 							if !DeepEqual(currentConfiguration.ServiceBackends[service], newConfiguration.ServiceBackends[service]) {
-								fmt.Fprintf(os.Stderr, "Service %s differs between old and new (%d vs %d items)\n", service, len(currentConfiguration.ServiceBackends[service]), len(newConfiguration.ServiceBackends[service]))
+								fmt.Fprintf(os.Stderr, "Service %s differs between old and new (%d vs %d items)\n",
+									service, len(currentConfiguration.ServiceBackends[service]), len(newConfiguration.ServiceBackends[service]))
+
+								for endpoint, _ := range currentConfiguration.ServiceBackends[service] {
+									_, found := newConfiguration.ServiceBackends[service][endpoint]
+									if !found {
+										fmt.Fprintf(os.Stderr, "Lost endpoint %s from service %s\n", endpoint, service)
+									}
+								}
+
+								for endpoint, _ := range newConfiguration.ServiceBackends[service] {
+									_, found := currentConfiguration.ServiceBackends[service][endpoint]
+									if !found {
+										fmt.Fprintf(os.Stderr, "New endpoint %s for service %s\n", endpoint, service)
+									}
+								}
+
 							}
 						} else {
 							fmt.Fprintf(os.Stderr, "Service %s not found in new ServiceBackends\n", service)
