@@ -232,6 +232,10 @@ func (a Int64Slice) Len() int           { return len(a) }
 func (a Int64Slice) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a Int64Slice) Less(i, j int) bool { return a[i] < a[j] }
 
+/**
+ * Cleans up old revisions for all images in the authoritative_names list. Leaves two newest revision/tag
+ * per image.
+ */
 func CleanupOldAuthoritativeImages(authoritative_names []string, client *docker.Client) error {
 	var imageRegexp = regexp.MustCompile("(.+):(.+)")
 
@@ -240,12 +244,12 @@ func CleanupOldAuthoritativeImages(authoritative_names []string, client *docker.
 		return err
 	}
 
+	// This maps <image name> to map of <image revision/tag> which then contains the APIImages object
 	imagesForName := make(map[string]map[string]docker.APIImages)
 
 	for _, image := range storedImages {
 		for _, tag := range image.RepoTags {
 			m := imageRegexp.FindStringSubmatch(tag)
-			fmt.Printf("Tag: %s, m: %+v\n", tag, m)
 
 			_, found := imagesForName[m[1]]
 			if !found {
@@ -256,11 +260,19 @@ func CleanupOldAuthoritativeImages(authoritative_names []string, client *docker.
 		}
 	}
 
+	// Now iterate thru all interesting images
 	for image, images := range imagesForName {
 		fmt.Printf("Name %s has %d images\n", image, len(images))
+
+		// If an image has more than two different revisions/tags then we'll keep the two newest and erase the rest
 		if len(images) > 2 {
+
+			// We first build a map from image.Created to the actual APIImages
 			createdMap := make(map[int64]docker.APIImages)
+
+			// And store all the image.Create timestamps here
 			var keys Int64Slice
+
 			for _, image := range images {
 				_, found := createdMap[image.Created]
 				if !found {
@@ -269,7 +281,10 @@ func CleanupOldAuthoritativeImages(authoritative_names []string, client *docker.
 				}
 			}
 
+			// So we can sort the timestamps, oldest first
 			sort.Sort(keys)
+
+			// And then we start removing from the oldest and stop so that we leave two newest
 			for i := 0; i < len(keys)-2; i++ {
 				image := createdMap[keys[i]]
 				fmt.Printf("Removing image %s (tags %+v) at timestamp %d\n", image.ID, image.RepoTags, keys[i])
