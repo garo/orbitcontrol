@@ -219,6 +219,12 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 			mc.HAProxyConfiguration.Template = string(bytes)
 		}
 
+		fname = startpath + "/machineconfigurations/tags/" + tag.Name() + "/authoritative_names.json"
+		bytes, err = ioutil.ReadFile(fname)
+		if err == nil {
+			err = json.Unmarshal([]byte(bytes), &mc.AuthoritativeNames)
+		}
+
 		files, err = ioutil.ReadDir(startpath + "/machineconfigurations/tags/" + tag.Name() + "/certs/")
 		if err == nil {
 			for _, file := range files {
@@ -345,6 +351,15 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 
 		}
 
+		if len(mc.AuthoritativeNames) > 0 {
+			bytes, err := json.Marshal(mc.AuthoritativeNames)
+			_, err = etcdClient.Set(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/authoritative_names", string(bytes), 0)
+			if err != nil {
+				return err
+			}
+
+		}
+
 		// First check if a service needs to be removed
 		key := c.EtcdBasePath + "/machineconfigurations/tags/" + tag + "/services"
 		res, err := etcdClient.Get(key, true, true)
@@ -411,7 +426,7 @@ func (c *Containrunner) GetAllServices(etcdClient *etcd.Client) (map[string]Serv
 	for _, node := range res.Node.Nodes {
 		if node.Dir == true {
 			name := string(node.Key[len(res.Node.Key)+1:])
-			service, err = c.GetServiceByName(name, etcdClient)
+			service, err = c.GetServiceByName(name, etcdClient, "")
 			if err != nil {
 				panic(err)
 			}
@@ -450,7 +465,7 @@ func (c *Containrunner) RemoveService(name string, etcdClient *etcd.Client) erro
 	return nil
 }
 
-func (c *Containrunner) GetServiceByName(name string, etcdClient *etcd.Client) (ServiceConfiguration, error) {
+func (c *Containrunner) GetServiceByName(name string, etcdClient *etcd.Client, machineAddress string) (ServiceConfiguration, error) {
 	if etcdClient == nil {
 		etcdClient = GetEtcdClient(c.EtcdEndpoints)
 	}
@@ -462,6 +477,7 @@ func (c *Containrunner) GetServiceByName(name string, etcdClient *etcd.Client) (
 
 	serviceConfiguration := ServiceConfiguration{}
 	var serviceRevision *ServiceRevision
+	//var machineServiceRevision *ServiceRevision
 
 	for _, node := range res.Node.Nodes {
 		if node.Dir == false && strings.HasSuffix(node.Key, "/config") {
@@ -471,6 +487,18 @@ func (c *Containrunner) GetServiceByName(name string, etcdClient *etcd.Client) (
 			}
 		}
 
+		/*
+			if node.Dir == false && strings.HasSuffix(node.Key, "/machines") {
+				for _, subnode := range node.Node.Nodes {
+
+				}
+				serviceRevision = new(ServiceRevision)
+				err = json.Unmarshal([]byte(node.Value), serviceRevision)
+				if err != nil {
+					panic(err)
+				}
+			}
+		*/
 		if node.Dir == false && strings.HasSuffix(node.Key, "/revision") {
 			serviceRevision = new(ServiceRevision)
 			err = json.Unmarshal([]byte(node.Value), serviceRevision)
@@ -604,7 +632,7 @@ func MergeServiceConfig(dst ServiceConfiguration, overwrite ServiceConfiguration
 	return dst
 }
 
-func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []string) (MachineConfiguration, error) {
+func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []string, machineAddress string) (MachineConfiguration, error) {
 
 	var configuration MachineConfiguration
 	for _, tag := range tags {
@@ -637,7 +665,7 @@ func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []
 
 						// The GetServiceByName creates completly new ServiceConfiguration instance
 						// So it's later safe to use MergeServiceConfig to modify it (it's not shared between machines or anything)
-						boundService.DefaultConfiguration, err = c.GetServiceByName(name, etcd)
+						boundService.DefaultConfiguration, err = c.GetServiceByName(name, etcd, machineAddress)
 						if err != nil {
 							fmt.Fprintf(os.Stderr, "Error getting service %s: %+v\n", name, err)
 							return configuration, err

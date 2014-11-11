@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/fsouza/go-dockerclient"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -191,7 +192,7 @@ func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
 		}
 	}
 
-	//	fmt.Println("Remaining running containers: ", len(existing_containers))
+	fmt.Println("Remaining running containers: ", len(existing_containers))
 	var imageRegexp = regexp.MustCompile("(.+):")
 	for _, container := range existing_containers {
 		m := imageRegexp.FindStringSubmatch(container.Image)
@@ -249,6 +250,10 @@ func (c *ServiceConfiguration) GetRevision() string {
 		return c.Revision.Revision
 	} else {
 		m := imageRegexp.FindStringSubmatch(c.Container.Config.Image)
+		if len(m) < 2 {
+			fmt.Printf("Erro getting revision for %s", c.Container.Config.Image)
+			return ""
+		}
 		return m[2]
 	}
 }
@@ -313,19 +318,26 @@ func LaunchContainer(serviceConfiguration ServiceConfiguration, client *docker.C
 	}
 
 	if image == nil {
-		log.Info(LogEvent(ContainerLogEvent{"pulling", imageName, ""}))
-		var pullImageOptions docker.PullImageOptions
-		pullImageOptions.Registry = imageName[0:strings.Index(imageName, "/")]
-		imagePlusTag := imageName[strings.Index(imageName, "/")+1:]
-		pullImageOptions.Repository = pullImageOptions.Registry + "/" + imagePlusTag[0:strings.Index(imagePlusTag, ":")]
-		pullImageOptions.Tag = imagePlusTag[strings.Index(imagePlusTag, ":")+1:]
-		pullImageOptions.OutputStream = os.Stderr
+		for tries := 0; ; tries++ {
+			// Random sleep to distribute the pulls into a small time period
+			time.Sleep(time.Second * time.Duration(rand.Intn(30)+1))
 
-		err = client.PullImage(pullImageOptions, docker.AuthConfiguration{})
-		if err != nil {
-			fmt.Println("Could not pull new image, possibly the registry is overloaded. Trying again soon.\n%+v", err)
-			time.Sleep(time.Second * time.Duration(5))
-			return
+			log.Info(LogEvent(ContainerLogEvent{"pulling", imageName, ""}))
+			var pullImageOptions docker.PullImageOptions
+			pullImageOptions.Registry = imageName[0:strings.Index(imageName, "/")]
+			imagePlusTag := imageName[strings.Index(imageName, "/")+1:]
+			pullImageOptions.Repository = pullImageOptions.Registry + "/" + imagePlusTag[0:strings.Index(imagePlusTag, ":")]
+			pullImageOptions.Tag = imagePlusTag[strings.Index(imagePlusTag, ":")+1:]
+			pullImageOptions.OutputStream = os.Stderr
+
+			err = client.PullImage(pullImageOptions, docker.AuthConfiguration{})
+			if err != nil {
+				fmt.Println("Could not pull new image, possibly the registry is overloaded. Trying again soon. This was try %d\n%+v", tries, err)
+				time.Sleep(time.Second * time.Duration(rand.Intn(20)+5))
+			} else {
+				break
+			}
+
 		}
 	}
 

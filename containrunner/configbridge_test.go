@@ -65,6 +65,7 @@ Content-Type: text/html
 	fmt.Printf("TEST: %+v\n", orbitConfiguration.MachineConfigurations["testtag"].Services["dashboards"])
 
 	c.Assert(orbitConfiguration.MachineConfigurations["testtag"].Services["ubuntu"], Not(IsNil))
+	c.Assert(orbitConfiguration.MachineConfigurations["testtag"].AuthoritativeNames[0], Equals, "ubuntu")
 
 	c.Assert(orbitConfiguration.Services["ubuntu"].Name, Equals, "ubuntu")
 	c.Assert(orbitConfiguration.Services["ubuntu"].EndpointPort, Equals, 3500)
@@ -92,6 +93,10 @@ Connection: close
 Content-Type: text/html
 
 `)
+
+	res, err = s.etcd.Get("/test/machineconfigurations/tags/testtag/authoritative_names", true, true)
+	c.Assert(err, IsNil)
+	c.Assert(res.Node.Value, Equals, "[\"ubuntu\"]")
 
 	res, err = s.etcd.Get("/test/machineconfigurations/tags/testtag/haproxy_config", true, true)
 	c.Assert(err, IsNil)
@@ -123,7 +128,7 @@ Content-Type: text/html
 
 	res, err = s.etcd.Get("/test/services/ubuntu/config", true, true)
 	c.Assert(err, IsNil)
-	c.Assert(res.Node.Value, Equals, "{\"Name\":\"ubuntu\",\"EndpointPort\":3500,\"Checks\":[{\"Type\":\"http\",\"Url\":\"http://127.0.0.1:3500/check\",\"HttpHost\":\"\",\"Username\":\"\",\"Password\":\"\",\"HostPort\":\"\",\"DummyResult\":false,\"ExpectHttpStatus\":\"\",\"ExpectString\":\"\",\"ConnectTimeout\":0,\"ResponseTimeout\":0}],\"Container\":{\"HostConfig\":{\"Binds\":[\"/tmp:/data\"],\"ContainerIDFile\":\"\",\"LxcConf\":null,\"Privileged\":false,\"PortBindings\":null,\"Links\":null,\"PublishAllPorts\":false,\"Dns\":null,\"DnsSearch\":null,\"VolumesFrom\":null,\"NetworkMode\":\"host\"},\"Config\":{\"Hostname\":\"\",\"Domainname\":\"\",\"User\":\"\",\"Memory\":0,\"MemorySwap\":0,\"CpuShares\":0,\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"PortSpecs\":null,\"ExposedPorts\":null,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"NODE_ENV=vagrant\"],\"Cmd\":null,\"Dns\":null,\"Image\":\"ubuntu\",\"Volumes\":null,\"VolumesFrom\":\"\",\"WorkingDir\":\"\",\"Entrypoint\":null,\"NetworkDisabled\":false}},\"Revision\":null,\"SourceControl\":{\"Origin\":\"github.com/Applifier/ubuntu\",\"OAuthToken\":\"\",\"CIUrl\":\"\"},\"Attributes\":{}}")
+	c.Assert(res.Node.Value, Equals, "{\"Name\":\"ubuntu\",\"EndpointPort\":3500,\"Checks\":[{\"Type\":\"http\",\"Url\":\"http://127.0.0.1:3500/check\",\"HttpHost\":\"\",\"Username\":\"\",\"Password\":\"\",\"HostPort\":\"\",\"DummyResult\":false,\"ExpectHttpStatus\":\"\",\"ExpectString\":\"\",\"ConnectTimeout\":0,\"ResponseTimeout\":0,\"Delay\":0}],\"Container\":{\"HostConfig\":{\"Binds\":[\"/tmp:/data\"],\"ContainerIDFile\":\"\",\"LxcConf\":null,\"Privileged\":false,\"PortBindings\":null,\"Links\":null,\"PublishAllPorts\":false,\"Dns\":null,\"DnsSearch\":null,\"VolumesFrom\":null,\"NetworkMode\":\"host\"},\"Config\":{\"Hostname\":\"\",\"Domainname\":\"\",\"User\":\"\",\"Memory\":0,\"MemorySwap\":0,\"CpuShares\":0,\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"PortSpecs\":null,\"ExposedPorts\":null,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"NODE_ENV=vagrant\"],\"Cmd\":null,\"Dns\":null,\"Image\":\"ubuntu\",\"Volumes\":null,\"VolumesFrom\":\"\",\"WorkingDir\":\"\",\"Entrypoint\":null,\"NetworkDisabled\":false}},\"Revision\":null,\"SourceControl\":{\"Origin\":\"github.com/Applifier/ubuntu\",\"OAuthToken\":\"\",\"CIUrl\":\"\"},\"Attributes\":{}}")
 
 	res, err = s.etcd.Get("/test/machineconfigurations/tags/testtag/services/ubuntu", true, true)
 	c.Assert(err, IsNil)
@@ -148,7 +153,7 @@ func (s *ConfigBridgeSuite) TestUploadOrbitConfigurationToEtcdWhichRemovesAServi
 	// Verify that this service exists before we try to delete it in the second step
 	res, err := s.etcd.Get("/test/services/ubuntu/config", true, true)
 	c.Assert(err, IsNil)
-	c.Assert(res.Node.Value, Equals, "{\"Name\":\"ubuntu\",\"EndpointPort\":3500,\"Checks\":[{\"Type\":\"http\",\"Url\":\"http://127.0.0.1:3500/check\",\"HttpHost\":\"\",\"Username\":\"\",\"Password\":\"\",\"HostPort\":\"\",\"DummyResult\":false,\"ExpectHttpStatus\":\"\",\"ExpectString\":\"\",\"ConnectTimeout\":0,\"ResponseTimeout\":0}],\"Container\":{\"HostConfig\":{\"Binds\":[\"/tmp:/data\"],\"ContainerIDFile\":\"\",\"LxcConf\":null,\"Privileged\":false,\"PortBindings\":null,\"Links\":null,\"PublishAllPorts\":false,\"Dns\":null,\"DnsSearch\":null,\"VolumesFrom\":null,\"NetworkMode\":\"host\"},\"Config\":{\"Hostname\":\"\",\"Domainname\":\"\",\"User\":\"\",\"Memory\":0,\"MemorySwap\":0,\"CpuShares\":0,\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"PortSpecs\":null,\"ExposedPorts\":null,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"NODE_ENV=vagrant\"],\"Cmd\":null,\"Dns\":null,\"Image\":\"ubuntu\",\"Volumes\":null,\"VolumesFrom\":\"\",\"WorkingDir\":\"\",\"Entrypoint\":null,\"NetworkDisabled\":false}},\"Revision\":null,\"SourceControl\":{\"Origin\":\"github.com/Applifier/ubuntu\",\"OAuthToken\":\"\",\"CIUrl\":\"\"},\"Attributes\":{}}")
+	c.Assert(res.Node.Value, Equals, "{\"Name\":\"ubuntu\",\"EndpointPort\":3500,\"Checks\":[{\"Type\":\"http\",\"Url\":\"http://127.0.0.1:3500/check\",\"HttpHost\":\"\",\"Username\":\"\",\"Password\":\"\",\"HostPort\":\"\",\"DummyResult\":false,\"ExpectHttpStatus\":\"\",\"ExpectString\":\"\",\"ConnectTimeout\":0,\"ResponseTimeout\":0,\"Delay\":0}],\"Container\":{\"HostConfig\":{\"Binds\":[\"/tmp:/data\"],\"ContainerIDFile\":\"\",\"LxcConf\":null,\"Privileged\":false,\"PortBindings\":null,\"Links\":null,\"PublishAllPorts\":false,\"Dns\":null,\"DnsSearch\":null,\"VolumesFrom\":null,\"NetworkMode\":\"host\"},\"Config\":{\"Hostname\":\"\",\"Domainname\":\"\",\"User\":\"\",\"Memory\":0,\"MemorySwap\":0,\"CpuShares\":0,\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"PortSpecs\":null,\"ExposedPorts\":null,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"NODE_ENV=vagrant\"],\"Cmd\":null,\"Dns\":null,\"Image\":\"ubuntu\",\"Volumes\":null,\"VolumesFrom\":\"\",\"WorkingDir\":\"\",\"Entrypoint\":null,\"NetworkDisabled\":false}},\"Revision\":null,\"SourceControl\":{\"Origin\":\"github.com/Applifier/ubuntu\",\"OAuthToken\":\"\",\"CIUrl\":\"\"},\"Attributes\":{}}")
 
 	orbitConfiguration, err = ct.LoadOrbitConfigurationFromFiles("/Development/go/src/github.com/garo/orbitcontrol/testdata")
 	c.Assert(err, IsNil)
@@ -328,7 +333,7 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTags(c *C) {
 	tags := []string{"testtag"}
 	var containrunner Containrunner
 
-	configuration, err := containrunner.GetMachineConfigurationByTags(s.etcd, tags)
+	configuration, err := containrunner.GetMachineConfigurationByTags(s.etcd, tags, "")
 	c.Assert(configuration.Services["ubuntu"].GetConfig().Name, Equals, "ubuntu")
 	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.HostConfig.NetworkMode, Equals, "host")
 	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.Config.AttachStderr, Equals, false)
@@ -436,7 +441,7 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTagsWithOverwrittenPara
 
 	tags := []string{"testtag"}
 	var containrunner Containrunner
-	configuration, err := containrunner.GetMachineConfigurationByTags(s.etcd, tags)
+	configuration, err := containrunner.GetMachineConfigurationByTags(s.etcd, tags, "")
 
 	c.Assert(configuration.Services["ubuntu"].GetConfig().Name, Equals, "ubuntu")
 	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.HostConfig.NetworkMode, Equals, "host")
@@ -609,6 +614,33 @@ func (s *ConfigBridgeSuite) TestGetServiceRevision(c *C) {
 
 }
 
+/*
+func (s *ConfigBridgeSuite) TestGetServiceByName(c *C) {
+
+	s.etcd.Delete("/test/services/myservice/revision", true)
+	s.etcd.Set("/test/services/myservice/revision", `
+{
+	"Revision" : "asdfasdf"
+}`, 10)
+
+	s.etcd.Delete("/test/services/myservice/machines", true)
+	s.etcd.Set("/test/services/myservice/machines/10.0.0.1", `
+{
+	"Revision" : "newrevision"
+}`, 10)
+
+	var containrunner Containrunner
+	containrunner.EtcdBasePath = "/test"
+	serviceRevision, err := containrunner.GetServiceByName("myservice", s.etcd, "10.0.0.1")
+	c.Assert(err, IsNil)
+	c.Assert(serviceRevision.Revision, Equals, "newrevision")
+
+	s.etcd.Delete("/test/services/myservice/revision", true)
+	s.etcd.Delete("/test/services/myservice/machines/10.0.0.1", true)
+	s.etcd.Delete("/test/services/myservice/machines", true)
+
+}
+*/
 func (s *ConfigBridgeSuite) TestSetServiceRevision(c *C) {
 
 	s.etcd.Delete("/test/services/myservice/revision", true)

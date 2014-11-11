@@ -20,6 +20,7 @@ type ServiceCheck struct {
 	ExpectString     string
 	ConnectTimeout   int
 	ResponseTimeout  int
+	Delay            int
 }
 
 type CheckResult struct {
@@ -49,7 +50,7 @@ func (ce *CheckEngine) Start(workers int, configResultPublisher ConfigResultPubl
 	ce.configurations = make(chan MachineConfiguration, 1)
 	ce.endpointAddress = endpointAddress
 
-	go CheckConfigUpdateWorker(ce.configurations, ce.results, endpointAddress)
+	go CheckConfigUpdateWorker(ce.configurations, ce.results, endpointAddress, 1000)
 	go PublishCheckResultWorker(ce.results, configResultPublisher)
 
 }
@@ -64,7 +65,7 @@ func (ce *CheckEngine) PushNewConfiguration(configuration MachineConfiguration) 
 	ce.configurations <- configuration
 }
 
-func CheckConfigUpdateWorker(configurations <-chan MachineConfiguration, results chan<- CheckResult, endpointAddress string) {
+func CheckConfigUpdateWorker(configurations <-chan MachineConfiguration, results chan<- CheckResult, endpointAddress string, delay int) {
 
 	serviceCheckWorkerChannels := make(map[string]chan ServiceChecks)
 
@@ -96,7 +97,7 @@ func CheckConfigUpdateWorker(configurations <-chan MachineConfiguration, results
 					// New service
 					fmt.Printf("Creating CheckServiceWorker for service %s\n", name)
 					serviceCheckWorkerChannels[name] = make(chan ServiceChecks)
-					go CheckServiceWorker(serviceCheckWorkerChannels[name], results, endpointAddress)
+					go CheckServiceWorker(serviceCheckWorkerChannels[name], results, endpointAddress, delay)
 				}
 
 				service := boundService.GetConfig()
@@ -138,7 +139,7 @@ func PublishCheckResultWorker(results chan CheckResult, configResultPublisher Co
 	}
 }
 
-func CheckServiceWorker(serviceChecksChannel <-chan ServiceChecks, results chan<- CheckResult, endpointAddress string) {
+func CheckServiceWorker(serviceChecksChannel <-chan ServiceChecks, results chan<- CheckResult, endpointAddress string, delay int) {
 
 	var serviceChecks ServiceChecks
 
@@ -164,6 +165,9 @@ func CheckServiceWorker(serviceChecksChannel <-chan ServiceChecks, results chan<
 			result.Ok = true
 			ok := true
 			for _, check := range serviceChecks.Checks {
+				if check.Delay > 0 {
+					delay = check.Delay
+				}
 				switch check.Type {
 				case "dummy":
 					ok = CheckDummyService(check)
@@ -183,7 +187,7 @@ func CheckServiceWorker(serviceChecksChannel <-chan ServiceChecks, results chan<
 
 		}
 
-		time.Sleep(time.Millisecond * time.Duration(1000))
+		time.Sleep(time.Millisecond * time.Duration(delay))
 	}
 
 }

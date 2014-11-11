@@ -438,15 +438,17 @@ func (hac *HAProxySettings) UpdateBackends(configuration *RuntimeConfiguration) 
 		}
 	}
 
-	if total_backends > 15 {
-		enabled_servers_percenet := float32(len(enabled_backends)) / float32(total_backends)
+	/*
+		if total_backends > 15 {
+			enabled_servers_percenet := float32(len(enabled_backends)) / float32(total_backends)
 
-		// Restart haproxy if there's more than 30% of the backends are down
-		if enabled_servers_percenet < 0.7 {
-			fmt.Fprintf(os.Stderr, "Restarting haproxy because less than %.f%% servers are up (%d enabled backends, %d total backends)\n", enabled_servers_percenet*100, len(enabled_backends), total_backends)
-			return true, nil
+			// Restart haproxy if there's more than 30% of the backends are down
+			if enabled_servers_percenet < 0.4 {
+				fmt.Fprintf(os.Stderr, "Restarting haproxy because less than %.f%% servers are up (%d enabled backends, %d total backends)\n", enabled_servers_percenet*100, len(enabled_backends), total_backends)
+				return true, nil
+			}
 		}
-	}
+	*/
 
 	return false, nil
 }

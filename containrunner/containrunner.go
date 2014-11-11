@@ -66,7 +66,7 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 		default:
 			somethingChanged = false
 
-			newConfiguration.MachineConfiguration, err = containrunner.GetMachineConfigurationByTags(etcdClient, containrunner.Tags)
+			newConfiguration.MachineConfiguration, err = containrunner.GetMachineConfigurationByTags(etcdClient, containrunner.Tags, containrunner.MachineAddress)
 			if err != nil {
 				if strings.HasPrefix(err.Error(), "100:") {
 					log.Info(LogString("Error:" + err.Error()))

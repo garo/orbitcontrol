@@ -43,7 +43,7 @@ func runService(args []string) (exit int) {
 	}
 
 	name := args[0]
-	serviceConfiguration, err := containrunnerInstance.GetServiceByName(name, nil)
+	serviceConfiguration, err := containrunnerInstance.GetServiceByName(name, nil, "")
 	if err != nil {
 		panic(err)
 	}

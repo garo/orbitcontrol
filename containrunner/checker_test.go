@@ -34,7 +34,7 @@ func (s *CheckerSuite) TestCheckServiceWorker(c *C) {
 	serviceChecks := ServiceChecks{}
 	serviceChecks.Checks = []ServiceCheck{{Type: "dummy", DummyResult: true}}
 
-	go CheckServiceWorker(serviceChecksChannel, results, "10.0.0.1")
+	go CheckServiceWorker(serviceChecksChannel, results, "10.0.0.1", 10)
 	serviceChecksChannel <- serviceChecks
 	result := <-results
 
@@ -151,7 +151,7 @@ func (s *CheckerSuite) TestCheckConfigUpdateWorker(c *C) {
 	boundService.DefaultConfiguration = v
 	mc.Services["myService"] = boundService
 
-	go CheckConfigUpdateWorker(configurations, resultsChannel, "10.0.0.1")
+	go CheckConfigUpdateWorker(configurations, resultsChannel, "10.0.0.1", 10)
 	configurations <- mc
 	result := <-resultsChannel
 	close(configurations)
@@ -184,7 +184,7 @@ func (s *CheckerSuite) TestCheckConfigUpdateWorkerWhenServiceIsRemoved(c *C) {
 	boundService.DefaultConfiguration = v
 	mc.Services["myService"] = boundService
 
-	go CheckConfigUpdateWorker(configurations, resultsChannel, "TestCheckConfigUpdateWorkerWhenServiceIsRemoved")
+	go CheckConfigUpdateWorker(configurations, resultsChannel, "TestCheckConfigUpdateWorkerWhenServiceIsRemoved", 100)
 	configurations <- mc
 	time.Sleep(time.Millisecond * 150)
 	fmt.Println("Removing service...")
