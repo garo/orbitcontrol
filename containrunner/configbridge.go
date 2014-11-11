@@ -476,7 +476,7 @@ func (c *Containrunner) GetServiceByName(name string, etcdClient *etcd.Client, m
 	}
 
 	serviceConfiguration := ServiceConfiguration{}
-	var serviceRevision *ServiceRevision
+	var serviceRevision *ServiceRevision = nil
 	//var machineServiceRevision *ServiceRevision
 
 	for _, node := range res.Node.Nodes {
@@ -486,24 +486,31 @@ func (c *Containrunner) GetServiceByName(name string, etcdClient *etcd.Client, m
 				panic(err)
 			}
 		}
-
-		/*
-			if node.Dir == false && strings.HasSuffix(node.Key, "/machines") {
-				for _, subnode := range node.Node.Nodes {
+		if node.Dir == true && strings.HasSuffix(node.Key, "/machines") {
+			for _, subnode := range node.Nodes {
+				ip := subnode.Key[len(node.Key)+1:]
+				if ip == machineAddress {
+					tmp := new(ServiceRevision)
+					err = json.Unmarshal([]byte(subnode.Value), tmp)
+					if err != nil {
+						fmt.Printf("Error unmarshalling machine revision. Error: %+v\n. String data was: %s\n", err, subnode.Value)
+					} else {
+						serviceRevision = tmp
+					}
 
 				}
+			}
+		}
+
+		if node.Dir == false && strings.HasSuffix(node.Key, "/revision") {
+
+			// We might have a machine revision which overwrites the default revision. If so, dont unmarshall the default revision here
+			if serviceRevision == nil {
 				serviceRevision = new(ServiceRevision)
 				err = json.Unmarshal([]byte(node.Value), serviceRevision)
 				if err != nil {
 					panic(err)
 				}
-			}
-		*/
-		if node.Dir == false && strings.HasSuffix(node.Key, "/revision") {
-			serviceRevision = new(ServiceRevision)
-			err = json.Unmarshal([]byte(node.Value), serviceRevision)
-			if err != nil {
-				panic(err)
 			}
 		}
 

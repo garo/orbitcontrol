@@ -614,9 +614,7 @@ func (s *ConfigBridgeSuite) TestGetServiceRevision(c *C) {
 
 }
 
-/*
 func (s *ConfigBridgeSuite) TestGetServiceByName(c *C) {
-
 	s.etcd.Delete("/test/services/myservice/revision", true)
 	s.etcd.Set("/test/services/myservice/revision", `
 {
@@ -631,16 +629,16 @@ func (s *ConfigBridgeSuite) TestGetServiceByName(c *C) {
 
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test"
-	serviceRevision, err := containrunner.GetServiceByName("myservice", s.etcd, "10.0.0.1")
+	serviceConfiguration, err := containrunner.GetServiceByName("myservice", s.etcd, "10.0.0.1")
 	c.Assert(err, IsNil)
-	c.Assert(serviceRevision.Revision, Equals, "newrevision")
+	c.Assert(serviceConfiguration.Revision.Revision, Equals, "newrevision")
 
 	s.etcd.Delete("/test/services/myservice/revision", true)
 	s.etcd.Delete("/test/services/myservice/machines/10.0.0.1", true)
 	s.etcd.Delete("/test/services/myservice/machines", true)
 
 }
-*/
+
 func (s *ConfigBridgeSuite) TestSetServiceRevision(c *C) {
 
 	s.etcd.Delete("/test/services/myservice/revision", true)
