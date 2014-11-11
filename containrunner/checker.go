@@ -166,6 +166,7 @@ func CheckServiceWorker(serviceChecksChannel <-chan ServiceChecks, results chan<
 			ok := true
 			for _, check := range serviceChecks.Checks {
 				if check.Delay > 0 {
+					fmt.Printf("Custom delay %d for check %s\n", serviceChecks.ServiceName)
 					delay = check.Delay
 				}
 				switch check.Type {

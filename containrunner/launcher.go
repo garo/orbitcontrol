@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -192,7 +193,7 @@ func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
 		}
 	}
 
-	fmt.Println("Remaining running containers: ", len(existing_containers))
+	//fmt.Println("Remaining running containers: ", len(existing_containers))
 	var imageRegexp = regexp.MustCompile("(.+):")
 	for _, container := range existing_containers {
 		m := imageRegexp.FindStringSubmatch(container.Image)
@@ -209,22 +210,78 @@ func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
 					if err != nil {
 						panic(err)
 					}
-
-					fmt.Printf("Removing old container image %+v\n", container.Container.Image)
-					err = client.RemoveImage(container.Container.Image)
-					if err != nil {
-						fmt.Printf("Could not remove old image %+v, reason: %+v", container.Container.Image, err)
-					}
-
 				}
 			}
 		}
+	}
+
+	err = CleanupOldAuthoritativeImages(conf.AuthoritativeNames, client)
+	if err != nil {
+		fmt.Printf("Error on cleaning up old images! %+v\n", err)
 	}
 
 	for _, container := range ready_for_launch {
 		LaunchContainer(container, client)
 	}
 
+}
+
+type Int64Slice []int64
+
+func (a Int64Slice) Len() int           { return len(a) }
+func (a Int64Slice) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a Int64Slice) Less(i, j int) bool { return a[i] < a[j] }
+
+func CleanupOldAuthoritativeImages(authoritative_names []string, client *docker.Client) error {
+	var imageRegexp = regexp.MustCompile("(.+):(.+)")
+
+	storedImages, err := client.ListImages(false)
+	if err != nil {
+		return err
+	}
+
+	imagesForName := make(map[string]map[string]docker.APIImages)
+
+	for _, image := range storedImages {
+		for _, tag := range image.RepoTags {
+			m := imageRegexp.FindStringSubmatch(tag)
+			fmt.Printf("Tag: %s, m: %+v\n", tag, m)
+
+			_, found := imagesForName[m[1]]
+			if !found {
+				imagesForName[m[1]] = make(map[string]docker.APIImages)
+			}
+
+			imagesForName[m[1]][m[2]] = image
+		}
+	}
+
+	for image, images := range imagesForName {
+		fmt.Printf("Name %s has %d images\n", image, len(images))
+		if len(images) > 2 {
+			createdMap := make(map[int64]docker.APIImages)
+			var keys Int64Slice
+			for _, image := range images {
+				_, found := createdMap[image.Created]
+				if !found {
+					createdMap[image.Created] = image
+					keys = append(keys, image.Created)
+				}
+			}
+
+			sort.Sort(keys)
+			for i := 0; i < len(keys)-2; i++ {
+				image := createdMap[keys[i]]
+				fmt.Printf("Removing image %s (tags %+v) at timestamp %d\n", image.ID, image.RepoTags, keys[i])
+				err = client.RemoveImage(image.ID)
+				if err != nil {
+					fmt.Printf("Could not remove old image %+v, reason: %+v", image.ID, err)
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func GetContainerImageNameWithRevision(serviceConfiguration ServiceConfiguration, revision string) string {
@@ -319,15 +376,18 @@ func LaunchContainer(serviceConfiguration ServiceConfiguration, client *docker.C
 
 	if image == nil {
 		for tries := 0; ; tries++ {
-			// Random sleep to distribute the pulls into a small time period
-			time.Sleep(time.Second * time.Duration(rand.Intn(30)+1))
-
 			log.Info(LogEvent(ContainerLogEvent{"pulling", imageName, ""}))
 			var pullImageOptions docker.PullImageOptions
-			pullImageOptions.Registry = imageName[0:strings.Index(imageName, "/")]
-			imagePlusTag := imageName[strings.Index(imageName, "/")+1:]
-			pullImageOptions.Repository = pullImageOptions.Registry + "/" + imagePlusTag[0:strings.Index(imagePlusTag, ":")]
-			pullImageOptions.Tag = imagePlusTag[strings.Index(imagePlusTag, ":")+1:]
+			if strings.Index(imageName, "/") == -1 {
+				pullImageOptions.Repository = imageName
+			} else {
+				fmt.Printf("Image name: %s\n", imageName)
+				pullImageOptions.Registry = imageName[0:strings.Index(imageName, "/")]
+				imagePlusTag := imageName[strings.Index(imageName, "/")+1:]
+				pullImageOptions.Repository = pullImageOptions.Registry + "/" + imagePlusTag[0:strings.Index(imagePlusTag, ":")]
+				pullImageOptions.Tag = imagePlusTag[strings.Index(imagePlusTag, ":")+1:]
+			}
+
 			pullImageOptions.OutputStream = os.Stderr
 
 			err = client.PullImage(pullImageOptions, docker.AuthConfiguration{})

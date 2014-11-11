@@ -2,7 +2,6 @@ package containrunner
 
 import "testing"
 
-//import "fmt"
 import . "gopkg.in/check.v1"
 import "github.com/fsouza/go-dockerclient"
 
@@ -32,7 +31,6 @@ func (s *MySuite) TestConvergeContainers(c *C) {
 
 	var containrunner Containrunner
 	conf, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
-
 	ConvergeContainers(conf.MachineConfigurations["testtag"], s.client)
 }
 
