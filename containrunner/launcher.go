@@ -10,6 +10,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 )
 
 type ContainerConfiguration struct {
@@ -320,8 +321,12 @@ func LaunchContainer(serviceConfiguration ServiceConfiguration, client *docker.C
 		pullImageOptions.Tag = imagePlusTag[strings.Index(imagePlusTag, ":")+1:]
 		pullImageOptions.OutputStream = os.Stderr
 
-		ret := client.PullImage(pullImageOptions, docker.AuthConfiguration{})
-		fmt.Println("Ret:", ret)
+		err = client.PullImage(pullImageOptions, docker.AuthConfiguration{})
+		if err != nil {
+			fmt.Println("Could not pull new image, possibly the registry is overloaded. Trying again soon.\n%+v", err)
+			time.Sleep(time.Second * time.Duration(5))
+			return
+		}
 	}
 
 	var options docker.CreateContainerOptions
