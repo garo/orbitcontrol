@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/coreos/go-etcd/etcd"
 	"github.com/op/go-logging"
+	"math/rand"
 	"os"
 	"strings"
 	"time"
@@ -32,7 +33,7 @@ type RuntimeConfiguration struct {
 }
 
 func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
-
+	rand.Seed(time.Now().UnixNano())
 	log.Info(LogString("MainExecutionLoop started"))
 
 	etcdClient := GetEtcdClient(containrunner.EtcdEndpoints)
@@ -89,16 +90,17 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 				log.Info(LogString("New Machine Configuration. Pushing changes to check engine"))
 
 				somethingChanged = true
-				ConvergeContainers(newConfiguration.MachineConfiguration, docker)
+				err := ConvergeContainers(newConfiguration.MachineConfiguration, true, docker)
+				if err == nil {
+					// This must be done after the containers have been converged so that the Check Engine
+					// can report the correct container revision
+					checkEngine.PushNewConfiguration(newConfiguration.MachineConfiguration)
 
-				// This must be done after the containers have been converged so that the Check Engine
-				// can report the correct container revision
-				checkEngine.PushNewConfiguration(newConfiguration.MachineConfiguration)
-
-				lastConverge = time.Now()
+					lastConverge = time.Now()
+				}
 
 			} else if time.Now().Sub(lastConverge) > time.Second*10 {
-				ConvergeContainers(newConfiguration.MachineConfiguration, docker)
+				ConvergeContainers(newConfiguration.MachineConfiguration, true, docker)
 				lastConverge = time.Now()
 
 			}

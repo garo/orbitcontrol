@@ -31,7 +31,7 @@ func (s *MySuite) TestConvergeContainers(c *C) {
 
 	var containrunner Containrunner
 	conf, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
-	ConvergeContainers(conf.MachineConfigurations["testtag"], s.client)
+	ConvergeContainers(conf.MachineConfigurations["testtag"], false, s.client)
 }
 
 func (s *MySuite) TestFindMatchingContainers_AllMatch(c *C) {

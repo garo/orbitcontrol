@@ -2,6 +2,7 @@ package containrunner
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/fsouza/go-dockerclient"
 	"io/ioutil"
@@ -137,13 +138,13 @@ func FindMatchingContainers(existing_containers []ContainerDetails, required_ser
 	return found_containers, remaining_containers
 }
 
-func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
+func ConvergeContainers(conf MachineConfiguration, preDelay bool, client *docker.Client) error {
 	var opts docker.ListContainersOptions
 	var ready_for_launch []ServiceConfiguration
 	opts.All = true
 	existing_containers_info, err := client.ListContainers(opts)
 	if err != nil {
-		return
+		return err
 	}
 
 	var existing_containers []ContainerDetails
@@ -221,9 +222,13 @@ func ConvergeContainers(conf MachineConfiguration, client *docker.Client) {
 	}
 
 	for _, container := range ready_for_launch {
-		LaunchContainer(container, client)
+		err = LaunchContainer(container, preDelay, client)
+		if err != nil {
+			return err
+		}
 	}
 
+	return nil
 }
 
 type Int64Slice []int64
@@ -380,7 +385,7 @@ func VerifyContainerExistsInRepository(image_name string, overrided_revision str
 	return true, data.LastUpdate, nil
 }
 
-func LaunchContainer(serviceConfiguration ServiceConfiguration, client *docker.Client) {
+func LaunchContainer(serviceConfiguration ServiceConfiguration, preDelay bool, client *docker.Client) error {
 
 	imageName := GetContainerImageNameWithRevision(serviceConfiguration, "")
 
@@ -391,6 +396,11 @@ func LaunchContainer(serviceConfiguration ServiceConfiguration, client *docker.C
 
 	if image == nil {
 		for tries := 0; ; tries++ {
+			if preDelay == true {
+				delay := rand.Intn(60) + 5
+				fmt.Printf("Sleeping %d seconds before pulling image %s\n", delay, imageName)
+				time.Sleep(time.Second * time.Duration(delay))
+			}
 			log.Info(LogEvent(ContainerLogEvent{"pulling", imageName, ""}))
 			var pullImageOptions docker.PullImageOptions
 			if strings.Index(imageName, "/") == -1 {
@@ -407,8 +417,13 @@ func LaunchContainer(serviceConfiguration ServiceConfiguration, client *docker.C
 
 			err = client.PullImage(pullImageOptions, docker.AuthConfiguration{})
 			if err != nil {
-				fmt.Println("Could not pull new image, possibly the registry is overloaded. Trying again soon. This was try %d\n%+v", tries, err)
-				time.Sleep(time.Second * time.Duration(rand.Intn(20)+5))
+				if tries > 5 {
+					fmt.Printf("Could not pull, too many tries. Aborting")
+					return errors.New("Could not pull, too many tries")
+				}
+				fmt.Printf("Could not pull new image, possibly the registry is overloaded. Trying again soon. This was try %d\n%+v\n", tries, err)
+
+				time.Sleep(time.Second * time.Duration(rand.Intn(60)+5))
 			} else {
 				break
 			}
@@ -476,4 +491,5 @@ func LaunchContainer(serviceConfiguration ServiceConfiguration, client *docker.C
 		panic(err)
 	}
 
+	return nil
 }
