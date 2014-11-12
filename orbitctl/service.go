@@ -107,7 +107,7 @@ func runService(args []string) (exit int) {
 			}
 		}
 
-	case len(args) == 4 && args[1] == "set" && args[2] == "revision" && args[3] != "":
+	case len(args) >= 4 && args[1] == "set" && args[2] == "revision" && args[3] != "":
 		revision := args[3]
 
 		if serviceConfiguration.SourceControl != nil {
@@ -144,9 +144,6 @@ func runService(args []string) (exit int) {
 			return 1
 		}
 
-		fmt.Printf("Setting service %s revision to %s\n", name, revision)
-		fmt.Printf("\n")
-
 		image_name := containrunner.GetContainerImageNameWithRevision(serviceConfiguration, revision)
 		exists, last_update, err := containrunner.VerifyContainerExistsInRepository(image_name, "")
 		if err != nil {
@@ -161,6 +158,14 @@ func runService(args []string) (exit int) {
 		diff := time.Since(time.Unix(last_update, 0))
 		fmt.Printf("The container %s you are about to deploy was last updated at %s ago\n", revision, diff)
 
+		machineAddress := ""
+		if len(args) >= 6 && (args[4] == "for" || args[4] == "to") && args[5] == "machine" && args[6] != "" {
+			machineAddress = args[6]
+			fmt.Printf("Setting service %s revision to %s for machine ip %s\n\n", name, revision, machineAddress)
+		} else {
+			fmt.Printf("Setting service %s revision to %s\n\n", name, revision)
+		}
+
 		if globalFlags.Force == false {
 			fmt.Printf("Are you sure you want to deploy %s with this revision into production? (y/N) ", name)
 			bytes, _ := reader.ReadBytes('\n')
@@ -174,7 +179,12 @@ func runService(args []string) (exit int) {
 			Revision:       revision,
 			DeploymentTime: time.Now(),
 		}
-		err = containrunnerInstance.SetServiceRevision(name, serviceRevision, nil)
+
+		if machineAddress != "" {
+			err = containrunnerInstance.SetServiceRevisionForMachine(name, serviceRevision, machineAddress, nil)
+		} else {
+			err = containrunnerInstance.SetServiceRevision(name, serviceRevision, nil)
+		}
 		if err != nil {
 			panic(err)
 		}
@@ -185,16 +195,20 @@ func runService(args []string) (exit int) {
 			fmt.Printf("Monitoring deployment progress (New deployment has been committed, you can press Ctrl-C to stop monitoring)\n")
 			fmt.Printf("Full deployment takes around two minutes\n")
 
-			for true {
-				time.Sleep(time.Second * 1)
-				old, updated, _ := CheckDeploymentProgress(name, revision)
-				fmt.Printf("Servers with old revision: %d, servers with new revision: %d... \r", len(old), len(updated))
-				if len(old) == 0 && len(updated) > 0 {
-					break
+			if machineAddress == "" {
+				for true {
+					time.Sleep(time.Second * 1)
+					old, updated, _ := CheckDeploymentProgress(name, revision)
+					fmt.Printf("Servers with old revision: %d, servers with new revision: %d... \r", len(old), len(updated))
+					if len(old) == 0 && len(updated) > 0 {
+						break
+					}
 				}
-			}
 
-			fmt.Printf("\nAll servers updated\n")
+				fmt.Printf("\nAll servers updated\n")
+			} else {
+				fmt.Printf("Deploying to machine %s. Monitoring not implemented for single machien deployment updates.\n")
+			}
 		}
 	}
 
