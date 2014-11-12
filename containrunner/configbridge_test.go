@@ -642,6 +642,10 @@ func (s *ConfigBridgeSuite) TestGetServiceByName(c *C) {
 func (s *ConfigBridgeSuite) TestSetServiceRevision(c *C) {
 
 	s.etcd.Delete("/test/services/myservice/revision", true)
+	s.etcd.Set("/test/services/myservice/machines/10.0.0.1", `
+{
+	"Revision" : "newrevision"
+}`, 10)
 
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test"
@@ -664,6 +668,36 @@ func (s *ConfigBridgeSuite) TestSetServiceRevision(c *C) {
 
 	c.Assert(serviceRevision2.Revision, Equals, "asdf")
 
-	s.etcd.Delete("/test/services/myservice/revision", true)
+	res, err = s.etcd.Get("/test/services/myservice/machines/10.0.0.1", false, false)
+	c.Assert(err, Not(IsNil))
 
+	s.etcd.Delete("/test/services/myservice/revision", true)
+}
+
+func (s *ConfigBridgeSuite) TestSetServiceRevisionForMachine(c *C) {
+
+	s.etcd.Delete("/test/services/myservice/machines", true)
+
+	var containrunner Containrunner
+	containrunner.EtcdBasePath = "/test"
+
+	serviceRevision := ServiceRevision{
+		Revision: "asdf",
+	}
+	var serviceRevision2 ServiceRevision
+
+	err := containrunner.SetServiceRevisionForMachine("myservice", serviceRevision, "10.0.0.2", s.etcd)
+	c.Assert(err, IsNil)
+
+	res, err := s.etcd.Get("/test/services/myservice/machines/10.0.0.2", false, false)
+	if err != nil {
+		panic(err)
+	}
+
+	err = json.Unmarshal([]byte(res.Node.Value), &serviceRevision2)
+	c.Assert(err, IsNil)
+
+	c.Assert(serviceRevision2.Revision, Equals, "asdf")
+
+	s.etcd.Delete("/test/services/myservice/machines", true)
 }

@@ -866,5 +866,21 @@ func (c Containrunner) SetServiceRevision(service_name string, serviceRevision S
 		return err
 	}
 
+	etcdClient.Delete(c.EtcdBasePath+"/services/"+service_name+"/machines", true)
+
+	return nil
+}
+
+func (c Containrunner) SetServiceRevisionForMachine(service_name string, serviceRevision ServiceRevision, machineAddress string, etcdClient *etcd.Client) error {
+	if etcdClient == nil {
+		etcdClient = GetEtcdClient(c.EtcdEndpoints)
+	}
+
+	bytes, err := json.Marshal(serviceRevision)
+	_, err = etcdClient.Set(c.EtcdBasePath+"/services/"+service_name+"/machines/"+machineAddress, string(bytes), 0)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
