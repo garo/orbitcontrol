@@ -1,48 +1,172 @@
 package main
 
+/*
 import (
 	"bufio"
 	"code.google.com/p/goauth2/oauth"
 	"errors"
 	"fmt"
+	"github.com/codegangsta/cli"
+	"github.com/garo/orbitcontrol/containrunner"
+	"github.com/google/go-github/github"
+	"regexp"
+	"strings"
+	"time"
+		"os"
+
+)*/
+
+import (
+	"bufio"
+	"code.google.com/p/goauth2/oauth"
+	"errors"
 	"github.com/garo/orbitcontrol/containrunner"
 	"github.com/google/go-github/github"
 	"os"
 	"regexp"
 	"strings"
 	"time"
+
+	"fmt"
+	"github.com/codegangsta/cli"
 )
 
-var (
-	cmdService = &Command{
-		Name:    "service",
-		Summary: "Control services",
-		Usage: `
-	service <name> set revision <revision>
-	service <name>
-`,
-		Description: "",
-		Run:         runService,
-	}
-)
+var serviceHelpTemplate = `NAME:
+   {{.Name}} - {{.Usage}}.
+
+USAGE:
+   {{.Name}} [service name]
+			Displays service info
+
+   {{.Name}} [service name] set revision <revision>
+			Set service revision
+
+   {{.Name}} [service name] set revision <revision> on machine <ip>
+   			Set service revision for particular machine
+
+
+`
 
 func init() {
+
+	serviceApp := cli.NewApp()
+	serviceApp.Name = ""
+	serviceApp.EnableBashCompletion = true
+	serviceApp.HideHelp = true
+	serviceApp.Action = func(c *cli.Context) {
+		if len(c.Args()) == 0 {
+			t := &oauth.Transport{
+				Token: &oauth.Token{AccessToken: c.GlobalString("github-token")},
+			}
+
+			githubClient := github.NewClient(t.Client())
+
+			getServiceInfo(c.App.Name, githubClient)
+		} else {
+			serviceApp.RunAsSubcommand(c)
+		}
+
+	}
+	serviceApp.Commands = []cli.Command{
+		{
+			Name:     "set",
+			HideHelp: true,
+
+			Action: func(c *cli.Context) {
+
+				if c.Bool(cli.BashCompletionFlag.Name) {
+					c.App.BashComplete(c)
+					return
+				}
+
+				if len(c.Args()) == 0 {
+					cli.HelpPrinter(serviceHelpTemplate, c.App)
+				}
+
+			},
+			Subcommands: []cli.Command{
+				{
+					Name:     "revision",
+					HideHelp: true,
+					Before: func(c *cli.Context) error {
+						if c.Bool(cli.BashCompletionFlag.Name) || c.Args()[len(c.Args())-1] == "--generate-bash-completion" {
+							if len(c.Args()) == 2 {
+								fmt.Println("to")
+							} else if len(c.Args()) == 3 {
+								fmt.Println("machine")
+							}
+							return errors.New("")
+						}
+
+						return nil
+					},
+					Action: func(c *cli.Context) {
+						name := c.App.Name[0:strings.Index(c.App.Name, " ")]
+
+						if len(c.Args()) == 0 || c.Args()[0] != "revision" {
+							cli.HelpPrinter(serviceHelpTemplate, c.App)
+							return
+						}
+
+						revision := c.Args()[1]
+
+						machineAddress := ""
+						if len(c.Args()) == 5 && c.Args()[3] == "machine" {
+							machineAddress = c.Args()[4]
+						}
+
+						t := &oauth.Transport{
+							Token: &oauth.Token{AccessToken: c.GlobalString("github-token")},
+						}
+
+						githubClient := github.NewClient(t.Client())
+
+						retval, serviceConfiguration := getServiceInfo(name, githubClient)
+						if retval != 0 {
+							os.Exit(retval)
+						}
+
+						retval = setServiceRevision(name, revision, machineAddress, serviceConfiguration, githubClient)
+						if retval != 0 {
+							os.Exit(retval)
+						}
+					},
+				},
+			},
+		},
+	}
+
+	app.Commands = append(app.Commands,
+		cli.Command{
+			Name:  "service",
+			Usage: "Control services",
+			Action: func(c *cli.Context) {
+				serviceApp.Flags = c.App.Flags
+				serviceApp.HideHelp = true
+				serviceApp.Name = c.Args()[0]
+				serviceApp.Run(c.Args())
+			},
+			BashComplete: func(c *cli.Context) {
+				services, err := containrunnerInstance.GetAllServices(nil)
+				if err != nil {
+					fmt.Printf("Error: %+v\n", err)
+					return
+				}
+				if len(c.Args()) > 0 {
+					newArgs := append(c.Args(), "--generate-bash-completion")
+					serviceApp.Run(newArgs)
+					return
+				}
+
+				for service, _ := range services {
+					fmt.Println(service)
+				}
+			},
+		})
 }
 
-func runService(args []string) (exit int) {
+func getServiceInfo(name string, githubClient *github.Client) (exit int, serviceConfiguration containrunner.ServiceConfiguration) {
 
-	t := &oauth.Transport{
-		Token: &oauth.Token{AccessToken: "a91a73cc3bf597ac6b56f45ef11ed98937ab467a"},
-	}
-
-	client := github.NewClient(t.Client())
-
-	if len(args) == 0 {
-		fmt.Fprintf(os.Stderr, "Need service name as first argument\n")
-		return 1
-	}
-
-	name := args[0]
 	serviceConfiguration, err := containrunnerInstance.GetServiceByName(name, nil, "")
 	if err != nil {
 		panic(err)
@@ -52,163 +176,159 @@ func runService(args []string) (exit int) {
 		fmt.Printf("Continuous Integration server url for this service: %s\n", serviceConfiguration.SourceControl.CIUrl)
 	}
 
+	fmt.Printf("\x1b[1mService %s is currently running revision %s\x1b[0m\n", name, serviceConfiguration.GetRevision())
+	commit, err := GetCommitInfo(serviceConfiguration.SourceControl, serviceConfiguration.GetRevision(), githubClient)
+	if err != nil {
+		fmt.Printf("Error! Unable to get source control information on revision.\nError: %+v\n", err)
+		return 1, serviceConfiguration
+	} else {
+		PrintCommitInfo(commit)
+	}
+
+	fmt.Printf("\n")
+	if serviceConfiguration.Revision != nil && !serviceConfiguration.Revision.DeploymentTime.IsZero() {
+		fmt.Printf("\x1b[1mDeployment was done at %s (%s ago)\x1b[0m\n", serviceConfiguration.Revision.DeploymentTime, time.Since(serviceConfiguration.Revision.DeploymentTime))
+	}
+
+	if serviceConfiguration.SourceControl != nil {
+		commits, err := GetNewerCommits(serviceConfiguration.SourceControl, commit, githubClient)
+		if err != nil {
+			fmt.Printf("Error! Unable to get source control information on newer revisions.\nError: %+v\n", err)
+			return 1, serviceConfiguration
+		}
+
+		var deployable_commits = make([]github.RepositoryCommit, 0)
+		if len(commits) > 0 {
+			for _, commit := range commits {
+				exists, _, err := containrunner.VerifyContainerExistsInRepository(serviceConfiguration.Container.Config.Image, *commit.SHA)
+				if err != nil {
+					fmt.Printf("Error! Unable to get container registry information on newer revisions.\nError: %+v\n", err)
+					return 1, serviceConfiguration
+				}
+				if exists && *commit.SHA != serviceConfiguration.GetRevision() {
+					deployable_commits = append(deployable_commits, commit)
+				}
+			}
+
+			// Reverse sort
+			for i, j := 0, len(deployable_commits)-1; i < j; i, j = i+1, j-1 {
+				deployable_commits[i], deployable_commits[j] = deployable_commits[j], deployable_commits[i]
+			}
+
+			fmt.Printf("\x1b[1mThere are %d newer commits than the currently deployed revision, from which %d could be deployed (from old to new):\x1b[0m\n", len(commits), len(deployable_commits))
+			for _, commit := range deployable_commits {
+				fmt.Printf("\n")
+				PrintCommitInfo(&commit)
+			}
+
+			if len(deployable_commits) > 0 {
+				fmt.Printf("\nYou can deploy the newest commit with this command: \x1b[1morbitctl service %s set revision %s\x1b[0m\n\n", name, *deployable_commits[len(deployable_commits)-1].SHA)
+			}
+		}
+	}
+
+	return 0, serviceConfiguration
+}
+
+func setServiceRevision(name string, revision string, machineAddress string, serviceConfiguration containrunner.ServiceConfiguration, githubClient *github.Client) int {
 	reader := bufio.NewReader(os.Stdin)
 
-	switch {
-	case len(args) == 1:
-		fmt.Printf("\x1b[1mService %s is currently running revision %s\x1b[0m\n", name, serviceConfiguration.GetRevision())
-		commit, err := GetCommitInfo(serviceConfiguration.SourceControl, serviceConfiguration.GetRevision(), client)
+	if serviceConfiguration.SourceControl != nil {
+		commit, err := GetCommitInfo(serviceConfiguration.SourceControl, revision, githubClient)
 		if err != nil {
 			fmt.Printf("Error! Unable to get source control information on revision.\nError: %+v\n", err)
+			fmt.Printf("Can't deploy something which can't exists in the source control system!\n")
+
 			return 1
 		} else {
 			PrintCommitInfo(commit)
-		}
 
-		fmt.Printf("\n")
-		if serviceConfiguration.Revision != nil && !serviceConfiguration.Revision.DeploymentTime.IsZero() {
-			fmt.Printf("\x1b[1mDeployment was done at %s (%s ago)\x1b[0m\n", serviceConfiguration.Revision.DeploymentTime, time.Since(serviceConfiguration.Revision.DeploymentTime))
-		}
-
-		if serviceConfiguration.SourceControl != nil {
-			commits, err := GetNewerCommits(serviceConfiguration.SourceControl, commit, client)
-			if err != nil {
-				fmt.Printf("Error! Unable to get source control information on newer revisions.\nError: %+v\n", err)
-				return 1
-			}
-
-			var deployable_commits = make([]github.RepositoryCommit, 0)
-			if len(commits) > 0 {
-				for _, commit := range commits {
-					exists, _, err := containrunner.VerifyContainerExistsInRepository(serviceConfiguration.Container.Config.Image, *commit.SHA)
-					if err != nil {
-						fmt.Printf("Error! Unable to get container registry information on newer revisions.\nError: %+v\n", err)
-						return 1
-					}
-					if exists && *commit.SHA != serviceConfiguration.GetRevision() {
-						deployable_commits = append(deployable_commits, commit)
-					}
-				}
-
-				// Reverse sort
-				for i, j := 0, len(deployable_commits)-1; i < j; i, j = i+1, j-1 {
-					deployable_commits[i], deployable_commits[j] = deployable_commits[j], deployable_commits[i]
-				}
-
-				fmt.Printf("\x1b[1mThere are %d newer commits than the currently deployed revision, from which %d could be deployed (from old to new):\x1b[0m\n", len(commits), len(deployable_commits))
-				for _, commit := range deployable_commits {
-					fmt.Printf("\n")
-					PrintCommitInfo(&commit)
-				}
-
-				if len(deployable_commits) > 0 {
-					fmt.Printf("\nYou can deploy the newest commit with this command: \x1b[1morbitctl service %s set revision %s\x1b[0m\n\n", name, *deployable_commits[len(deployable_commits)-1].SHA)
-				}
+			// GitHub allows us to query for a revision with just an unique prefix, so we can now obtain the full revision tag
+			if revision != *commit.SHA {
+				revision = *commit.SHA
 			}
 		}
 
-	case len(args) >= 4 && args[1] == "set" && args[2] == "revision" && args[3] != "":
-		revision := args[3]
-
-		if serviceConfiguration.SourceControl != nil {
-			commit, err := GetCommitInfo(serviceConfiguration.SourceControl, revision, client)
-			if err != nil {
-				fmt.Printf("Error! Unable to get source control information on revision.\nError: %+v\n", err)
-				fmt.Printf("Can't deploy something which can't exists in the source control system!\n")
-
-				return 1
-			} else {
-				PrintCommitInfo(commit)
-
-				// GitHub allows us to query for a revision with just an unique prefix, so we can now obtain the full revision tag
-				if revision != *commit.SHA {
-					revision = *commit.SHA
-				}
-			}
-
-			if serviceConfiguration.GetRevision() == revision {
-				fmt.Printf("Service %s is already at revision %s\n", name, revision)
-				return 0
-			} else if serviceConfiguration.Revision != nil {
-				fmt.Printf("Previous revision: %s\n", serviceConfiguration.Revision.Revision)
-			} else {
-				fmt.Printf("Service %s previously had no dynamic revision!\nStatic revision is: %s\n", name, containrunner.GetContainerImageNameWithRevision(serviceConfiguration, ""))
-			}
-
+		if serviceConfiguration.GetRevision() == revision {
+			fmt.Printf("Service %s is already at revision %s\n", name, revision)
+			return 0
+		} else if serviceConfiguration.Revision != nil {
+			fmt.Printf("Previous revision: %s\n", serviceConfiguration.Revision.Revision)
 		} else {
-			fmt.Printf("Warning! Unable to get source control information on revision. SourceControl data not set for service\n")
+			fmt.Printf("Service %s previously had no dynamic revision!\nStatic revision is: %s\n", name, containrunner.GetContainerImageNameWithRevision(serviceConfiguration, ""))
 		}
 
-		if serviceConfiguration.Container == nil {
-			fmt.Printf("Error! The service %s configuration in incomplete! Missign Container data\n", name)
+	} else {
+		fmt.Printf("Warning! Unable to get source control information on revision. SourceControl data not set for service\n")
+	}
+
+	if serviceConfiguration.Container == nil {
+		fmt.Printf("Error! The service %s configuration in incomplete! Missign Container data\n", name)
+		return 1
+	}
+
+	image_name := containrunner.GetContainerImageNameWithRevision(serviceConfiguration, revision)
+	exists, last_update, err := containrunner.VerifyContainerExistsInRepository(image_name, "")
+	if err != nil {
+		panic(err)
+	}
+
+	if exists == false {
+		fmt.Printf("Error! Unable to find correct container from repository for this revision!\nMissing container name: %s\n", image_name)
+		return 1
+	}
+
+	diff := time.Since(time.Unix(last_update, 0))
+	fmt.Printf("The container %s you are about to deploy was last updated at %s ago\n", revision, diff)
+
+	if machineAddress != "" {
+		fmt.Printf("Setting service %s revision to %s for machine ip %s\n\n", name, revision, machineAddress)
+	} else {
+		fmt.Printf("Setting service %s revision to %s\n\n", name, revision)
+	}
+
+	if globalFlags.Force == false {
+		fmt.Printf("Are you sure you want to deploy %s with this revision into production? (y/N) ", name)
+		bytes, _ := reader.ReadBytes('\n')
+		if bytes[0] != 'y' && bytes[0] != 'Y' {
+			fmt.Printf("Abort!\n")
 			return 1
 		}
+	}
 
-		image_name := containrunner.GetContainerImageNameWithRevision(serviceConfiguration, revision)
-		exists, last_update, err := containrunner.VerifyContainerExistsInRepository(image_name, "")
-		if err != nil {
-			panic(err)
-		}
+	var serviceRevision = containrunner.ServiceRevision{
+		Revision:       revision,
+		DeploymentTime: time.Now(),
+	}
 
-		if exists == false {
-			fmt.Printf("Error! Unable to find correct container from repository for this revision!\nMissing container name: %s\n", image_name)
-			return 1
-		}
+	if machineAddress != "" {
+		err = containrunnerInstance.SetServiceRevisionForMachine(name, serviceRevision, machineAddress, nil)
+	} else {
+		err = containrunnerInstance.SetServiceRevision(name, serviceRevision, nil)
+	}
+	if err != nil {
+		panic(err)
+	}
 
-		diff := time.Since(time.Unix(last_update, 0))
-		fmt.Printf("The container %s you are about to deploy was last updated at %s ago\n", revision, diff)
+	if serviceConfiguration.Checks == nil || len(serviceConfiguration.Checks) == 0 {
+		fmt.Printf("Service has no checks, so deployment progress can't be monitored\n")
+	} else {
+		fmt.Printf("Monitoring deployment progress (New deployment has been committed, you can press Ctrl-C to stop monitoring)\n")
+		fmt.Printf("Full deployment takes around two minutes\n")
 
-		machineAddress := ""
-		if len(args) >= 6 && (args[4] == "for" || args[4] == "to") && args[5] == "machine" && args[6] != "" {
-			machineAddress = args[6]
-			fmt.Printf("Setting service %s revision to %s for machine ip %s\n\n", name, revision, machineAddress)
-		} else {
-			fmt.Printf("Setting service %s revision to %s\n\n", name, revision)
-		}
-
-		if globalFlags.Force == false {
-			fmt.Printf("Are you sure you want to deploy %s with this revision into production? (y/N) ", name)
-			bytes, _ := reader.ReadBytes('\n')
-			if bytes[0] != 'y' && bytes[0] != 'Y' {
-				fmt.Printf("Abort!\n")
-				return 1
-			}
-		}
-
-		var serviceRevision = containrunner.ServiceRevision{
-			Revision:       revision,
-			DeploymentTime: time.Now(),
-		}
-
-		if machineAddress != "" {
-			err = containrunnerInstance.SetServiceRevisionForMachine(name, serviceRevision, machineAddress, nil)
-		} else {
-			err = containrunnerInstance.SetServiceRevision(name, serviceRevision, nil)
-		}
-		if err != nil {
-			panic(err)
-		}
-
-		if serviceConfiguration.Checks == nil || len(serviceConfiguration.Checks) == 0 {
-			fmt.Printf("Service has no checks, so deployment progress can't be monitored\n")
-		} else {
-			fmt.Printf("Monitoring deployment progress (New deployment has been committed, you can press Ctrl-C to stop monitoring)\n")
-			fmt.Printf("Full deployment takes around two minutes\n")
-
-			if machineAddress == "" {
-				for true {
-					time.Sleep(time.Second * 1)
-					old, updated, _ := CheckDeploymentProgress(name, revision)
-					fmt.Printf("Servers with old revision: %d, servers with new revision: %d... \r", len(old), len(updated))
-					if len(old) == 0 && len(updated) > 0 {
-						break
-					}
+		if machineAddress == "" {
+			for true {
+				time.Sleep(time.Second * 1)
+				old, updated, _ := CheckDeploymentProgress(name, revision)
+				fmt.Printf("Servers with old revision: %d, servers with new revision: %d... \r", len(old), len(updated))
+				if len(old) == 0 && len(updated) > 0 {
+					break
 				}
-
-				fmt.Printf("\nAll servers updated\n")
-			} else {
-				fmt.Printf("Deploying to machine %s. Monitoring not implemented for single machien deployment updates.\n")
 			}
+
+			fmt.Printf("\nAll servers updated\n")
+		} else {
+			fmt.Printf("Deploying to machine %s. Monitoring not implemented for single machien deployment updates.\n")
 		}
 	}
 

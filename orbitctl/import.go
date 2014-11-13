@@ -1,41 +1,48 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"github.com/codegangsta/cli"
 	"os"
 )
 
-var (
-	cmdImport = &Command{
-		Name:        "import",
-		Summary:     "Import orbit configurations from directory tree",
-		Usage:       "",
-		Description: "",
-		Run:         runImport,
-	}
-)
+var importHelpTemplate = `NAME:
+   {{.Name}} - {{.Usage}}
+USAGE:
+   {{.Name}} [import path to orbit configuration]
+
+`
 
 func init() {
-}
+	app.Commands = append(app.Commands,
+		cli.Command{
+			Name:  "import",
+			Usage: "Import orbit configurations from directory tree",
+			Flags: nil,
+			Before: func(c *cli.Context) error {
+				if c.Args().First() == "" {
+					cli.HelpPrinter(importHelpTemplate, c.App)
+					return errors.New("import path is missing")
+				}
 
-func runImport(args []string) (exit int) {
+				return nil
+			},
+			Action: func(c *cli.Context) {
+				path := c.Args()[1]
+				fmt.Printf("import from %s\n", path)
 
-	if len(args) == 0 {
-		fmt.Fprintf(os.Stderr, "Need path to orbit configuration")
-		return 1
-	}
+				orbitConfiguration, err := containrunnerInstance.LoadOrbitConfigurationFromFiles(path)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %+v\n", err)
+					os.Exit(1)
+				}
 
-	orbitConfiguration, err := containrunnerInstance.LoadOrbitConfigurationFromFiles(args[0])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %+v", err)
-		return 1
-	}
-
-	err = containrunnerInstance.UploadOrbitConfigurationToEtcd(orbitConfiguration, nil)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %+v", err)
-		return 1
-	}
-
-	return 0
+				err = containrunnerInstance.UploadOrbitConfigurationToEtcd(orbitConfiguration, nil)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %+v\n", err)
+					os.Exit(1)
+				}
+			},
+		})
 }

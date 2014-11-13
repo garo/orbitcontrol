@@ -2,20 +2,34 @@ package main
 
 import (
 	"fmt"
+	"github.com/codegangsta/cli"
 	"os"
 )
 
-var (
-	cmdEndpoints = &Command{
-		Name:        "endpoints",
-		Summary:     "Gets list of endpoints for a single service or summary for all endpoints",
-		Usage:       "[service]",
-		Description: "",
-		Run:         runEndpoints,
-	}
-)
-
 func init() {
+	app.Commands = append(app.Commands,
+		cli.Command{
+			Name:  "endpoints",
+			Usage: "Gets list of endpoints for a single service or summary for all endpoints",
+			Action: func(c *cli.Context) {
+				runEndpoints(c.Args())
+			},
+			BashComplete: func(c *cli.Context) {
+				services, err := containrunnerInstance.GetAllServices(nil)
+				if err != nil {
+					fmt.Printf("Error: %+v\n", err)
+					return
+				}
+				if len(c.Args()) > 0 {
+					fmt.Printf("BASH_COMPETITON_MYSTERY %+v\n", c.Args())
+					return
+				}
+
+				for service, _ := range services {
+					fmt.Println(service)
+				}
+			},
+		})
 }
 
 func runEndpoints(args []string) (exit int) {

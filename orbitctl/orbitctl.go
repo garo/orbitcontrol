@@ -7,6 +7,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/codegangsta/cli"
 	"github.com/coreos/go-etcd/etcd"
 	"github.com/garo/orbitcontrol/containrunner"
 	"log"
@@ -24,10 +25,8 @@ const (
 )
 
 var (
-	out      *tabwriter.Writer
-	commands []*Command
-
-	globalFlagset = flag.NewFlagSet("orbitctl", flag.ExitOnError)
+	out *tabwriter.Writer
+	app *cli.App = cli.NewApp()
 
 	globalFlags = struct {
 		Debug        bool
@@ -53,69 +52,63 @@ type Command struct {
 func init() {
 	out = new(tabwriter.Writer)
 	out.Init(os.Stdout, 0, 8, 1, '\t', 0)
-	commands = []*Command{
-		cmdHelp,
-		cmdDaemon,
-		cmdTags,
-		cmdServices,
-		cmdImport,
-		cmdTag,
-		cmdService,
-		cmdVerify,
-		cmdEndpoints,
-		cmdZabbix,
-		cmdWebserver,
-	}
-
-	globalFlagset.BoolVar(&globalFlags.Debug, "debug", false, "Print out more debug information to stderr")
-	globalFlagset.BoolVar(&globalFlags.Force, "force", false, "Force, don't ask questions")
-	globalFlagset.StringVar(&globalFlags.EtcdEndpoint, "etcd-endpoint", "http://etcd:4001", "Etcd server endpoint as http://host:port[,http://host:port] string")
-	globalFlagset.StringVar(&globalFlags.EtcdBasePath, "etcd-base-path", "/orbit", "Keyspace for orbit control data in etcd")
+	app.EnableBashCompletion = true
 
 }
 
 func main() {
-	// parse global arguments
-	globalFlagset.Parse(os.Args[1:])
+	app.Name = "orbitctl"
+	app.Usage = cliDescription
 
-	containrunnerInstance.EtcdEndpoints = strings.Split(globalFlags.EtcdEndpoint, ",")
-	containrunnerInstance.EtcdBasePath = globalFlags.EtcdBasePath
-
-	if globalFlags.Debug {
-		fmt.Fprintf(os.Stderr, "Turning etcd logging on")
-		etcd.SetLogger(log.New(os.Stderr, "go-etcd", log.LstdFlags))
+	etcdEndpointFlag := cli.StringFlag{
+		Name:   "etcd-endpoint",
+		Value:  "http://etcd:4001",
+		Usage:  "Etcd server endpoint as http://host:port[,http://host:port] string",
+		EnvVar: "ORBITCTL_ETCD_ENDPOINT",
+	}
+	etcdBasePathFlag := cli.StringFlag{
+		Name:   "etcd-base-path",
+		Value:  "/orbit",
+		Usage:  "Keyspace for orbit control data in etcd",
+		EnvVar: "ORBITCTL_ETCD_BASE_PATH",
 	}
 
-	var args = globalFlagset.Args()
-
-	getFlagsFromEnv(cliName, globalFlagset)
-
-	// no command specified - trigger help
-	if len(args) < 1 {
-		args = append(args, "help")
+	app.Flags = []cli.Flag{
+		cli.BoolFlag{
+			Name:   "debug",
+			Usage:  "Print out more debug information to stderr",
+			EnvVar: "ORBITCTL_DEBUG",
+		},
+		cli.BoolFlag{
+			Name:   "force",
+			Usage:  "Force, don't ask questions",
+			EnvVar: "ORBITCTL_FORCE",
+		},
+		cli.StringFlag{
+			Name:   "github-token",
+			Usage:  "Github OAuth2 token for accessing github commit info",
+			EnvVar: "ORBITCTL_GITHUB_TOKEN",
+		},
+		etcdBasePathFlag,
+		etcdEndpointFlag,
 	}
 
-	var cmd *Command
+	app.Before = func(c *cli.Context) error {
 
-	// determine which Command should be run
-	for _, c := range commands {
-		if c.Name == args[0] {
-			cmd = c
-			if err := c.Flags.Parse(args[1:]); err != nil {
-				fmt.Println(err.Error())
-				os.Exit(2)
-			}
-			break
+		containrunnerInstance.EtcdEndpoints = strings.Split(c.String("etcd-endpoint"), ",")
+		containrunnerInstance.EtcdBasePath = c.String("etcd-base-path")
+
+		//fmt.Printf("etcd base path: %s\n", containrunnerInstance.EtcdBasePath)
+
+		if c.IsSet("debug") {
+			fmt.Fprintf(os.Stderr, "Turning etcd logging on")
+			etcd.SetLogger(log.New(os.Stderr, "go-etcd", log.LstdFlags))
 		}
+
+		return nil
 	}
 
-	if cmd == nil {
-		fmt.Printf("%v: unknown subcommand: %q\n", cliName, args[0])
-		fmt.Printf("Run '%v help' for usage.\n", cliName)
-		os.Exit(2)
-	}
-
-	os.Exit(cmd.Run(cmd.Flags.Args()))
+	app.Run(os.Args)
 
 }
 

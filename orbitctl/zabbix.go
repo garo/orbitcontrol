@@ -2,49 +2,37 @@ package main
 
 import (
 	"fmt"
+	"github.com/codegangsta/cli"
 	"os"
 )
 
-var (
-	cmdZabbix = &Command{
-		Name:    "zabbix",
-		Summary: "Outputs data to be sent to zabbix. Multiple different modes.",
-		Usage:   "[mode, for example endpoints]",
-		Description: `Modes:
-endpoints: Outputs number of endpoints. Uses key orbit.running_endpoints with service name as the host
-`,
-		Run: runZabbix,
-	}
-)
-
 func init() {
-}
+	app.Commands = append(app.Commands,
+		cli.Command{
+			Name:  "zabbix",
+			Usage: "Outputs data to be sent to zabbix. Multiple different modes.",
+			Subcommands: []cli.Command{
+				{
+					Name:  "endpoints",
+					Usage: "Outputs number of endpoints. Uses key orbit.running_endpoints with service name as the host",
+					Action: func(c *cli.Context) {
+						services, err := containrunnerInstance.GetAllServices(nil)
+						if err != nil {
+							fmt.Fprintf(os.Stderr, "Error: %+v\n", err)
+							os.Exit(1)
+						}
 
-func runZabbix(args []string) (exit int) {
+						for service_name, _ := range services {
+							endpoints, err := containrunnerInstance.GetEndpointsForService(service_name)
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "Error: %+v\n", err)
+								os.Exit(1)
+							}
 
-	if len(args) != 1 {
-		fmt.Fprintf(os.Stderr, "Error, see usage\n")
-		return 1
-	}
-
-	if args[0] == "endpoints" {
-		services, err := containrunnerInstance.GetAllServices(nil)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %+v\n", err)
-			return 1
-		}
-
-		for service_name, _ := range services {
-			endpoints, err := containrunnerInstance.GetEndpointsForService(service_name)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %+v\n", err)
-				return 1
-			}
-
-			fmt.Printf("%s orbit.running_endpoints %d\n", service_name, len(endpoints))
-		}
-
-	}
-
-	return 0
+							fmt.Printf("%s orbit.running_endpoints %d\n", service_name, len(endpoints))
+						}
+					},
+				},
+			},
+		})
 }
