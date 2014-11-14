@@ -295,6 +295,7 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 				service, ok := oc.Services[service_name]
 				if !ok {
 					fmt.Fprintf(os.Stderr, "Could not find service %s when tried to tag it to %s\n", service_name, tag.Name())
+					os.Exit(1)
 					return nil, err
 				}
 				boundService.DefaultConfiguration = service
