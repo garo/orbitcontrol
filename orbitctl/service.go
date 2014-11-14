@@ -172,17 +172,22 @@ func getServiceInfo(name string, githubClient *github.Client) (exit int, service
 		panic(err)
 	}
 
-	if serviceConfiguration.SourceControl != nil && serviceConfiguration.SourceControl.CIUrl != "" {
-		fmt.Printf("Continuous Integration server url for this service: %s\n", serviceConfiguration.SourceControl.CIUrl)
-	}
+	var commit *github.RepositoryCommit
 
 	fmt.Printf("\x1b[1mService %s is currently running revision %s\x1b[0m\n", name, serviceConfiguration.GetRevision())
-	commit, err := GetCommitInfo(serviceConfiguration.SourceControl, serviceConfiguration.GetRevision(), githubClient)
-	if err != nil {
-		fmt.Printf("Error! Unable to get source control information on revision.\nError: %+v\n", err)
-		return 1, serviceConfiguration
-	} else {
-		PrintCommitInfo(commit)
+
+	fmt.Printf("CI: %+v\n", serviceConfiguration.SourceControl)
+
+	if serviceConfiguration.SourceControl != nil && serviceConfiguration.SourceControl.CIUrl != "" {
+		fmt.Printf("Continuous Integration server url for this service: %s\n", serviceConfiguration.SourceControl.CIUrl)
+
+		commit, err = GetCommitInfo(serviceConfiguration.SourceControl, serviceConfiguration.GetRevision(), githubClient)
+		if err != nil {
+			fmt.Printf("Error! Unable to get source control information on revision.\nError: %+v\n", err)
+			return 1, serviceConfiguration
+		} else {
+			PrintCommitInfo(commit)
+		}
 	}
 
 	fmt.Printf("\n")
@@ -190,7 +195,7 @@ func getServiceInfo(name string, githubClient *github.Client) (exit int, service
 		fmt.Printf("\x1b[1mDeployment was done at %s (%s ago)\x1b[0m\n", serviceConfiguration.Revision.DeploymentTime, time.Since(serviceConfiguration.Revision.DeploymentTime))
 	}
 
-	if serviceConfiguration.SourceControl != nil {
+	if serviceConfiguration.SourceControl != nil && serviceConfiguration.SourceControl.Origin != "" {
 		commits, err := GetNewerCommits(serviceConfiguration.SourceControl, commit, githubClient)
 		if err != nil {
 			fmt.Printf("Error! Unable to get source control information on newer revisions.\nError: %+v\n", err)
@@ -233,7 +238,7 @@ func getServiceInfo(name string, githubClient *github.Client) (exit int, service
 func setServiceRevision(name string, revision string, machineAddress string, serviceConfiguration containrunner.ServiceConfiguration, githubClient *github.Client) int {
 	reader := bufio.NewReader(os.Stdin)
 
-	if serviceConfiguration.SourceControl != nil {
+	if serviceConfiguration.SourceControl != nil && serviceConfiguration.SourceControl.Origin != "" {
 		commit, err := GetCommitInfo(serviceConfiguration.SourceControl, revision, githubClient)
 		if err != nil {
 			fmt.Printf("Error! Unable to get source control information on revision.\nError: %+v\n", err)
@@ -270,7 +275,8 @@ func setServiceRevision(name string, revision string, machineAddress string, ser
 	image_name := containrunner.GetContainerImageNameWithRevision(serviceConfiguration, revision)
 	exists, last_update, err := containrunner.VerifyContainerExistsInRepository(image_name, "")
 	if err != nil {
-		panic(err)
+		fmt.Printf("Container %s not found from local repository!\n", image_name)
+		return 1
 	}
 
 	if exists == false {
@@ -328,7 +334,7 @@ func setServiceRevision(name string, revision string, machineAddress string, ser
 
 			fmt.Printf("\nAll servers updated\n")
 		} else {
-			fmt.Printf("Deploying to machine %s. Monitoring not implemented for single machien deployment updates.\n")
+			fmt.Printf("Deploying to machine %s. Monitoring not implemented for single machien deployment updates.\n", machineAddress)
 		}
 	}
 

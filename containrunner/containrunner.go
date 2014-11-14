@@ -97,6 +97,9 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 					checkEngine.PushNewConfiguration(newConfiguration.MachineConfiguration)
 
 					lastConverge = time.Now()
+				} else {
+
+					fmt.Printf("Error on ConvergeContainers: %+v\n", err)
 				}
 
 			} else if time.Now().Sub(lastConverge) > time.Second*10 {

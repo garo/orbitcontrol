@@ -313,6 +313,9 @@ func GetContainerImageNameWithRevision(serviceConfiguration ServiceConfiguration
 
 	if revision != "" {
 		m := imageRegexp.FindStringSubmatch(serviceConfiguration.Container.Config.Image)
+		if len(m) == 0 {
+			return serviceConfiguration.Container.Config.Image + ":" + revision
+		}
 		return m[1] + ":" + revision
 
 	}
@@ -357,6 +360,10 @@ func VerifyContainerExistsInRepository(image_name string, overrided_revision str
 	// http://registry.applifier.info:5000/comet:ac937833f0af968be564230820a625c17f2e3ef1
 	var imageRegexp = regexp.MustCompile("(.+)/(.+?):(.+)")
 	m := imageRegexp.FindStringSubmatch(image_name)
+
+	if len(m) == 0 {
+		return false, 0, errors.New("Invalid image name format. Maybe this is not a local registry? Global Docker registry is currently not supported")
+	}
 
 	if overrided_revision != "" {
 		m[3] = overrided_revision

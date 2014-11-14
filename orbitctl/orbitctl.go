@@ -98,6 +98,7 @@ func main() {
 		containrunnerInstance.EtcdEndpoints = strings.Split(c.String("etcd-endpoint"), ",")
 		containrunnerInstance.EtcdBasePath = c.String("etcd-base-path")
 
+		//globalFlags.Force = c.Bool("force")
 		//fmt.Printf("etcd base path: %s\n", containrunnerInstance.EtcdBasePath)
 
 		if c.IsSet("debug") {
