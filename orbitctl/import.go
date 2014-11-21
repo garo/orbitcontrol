@@ -42,6 +42,8 @@ func init() {
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error: %+v\n", err)
 					os.Exit(1)
+				} else {
+					fmt.Printf("NOTICE! New configure uploaded, but there's currently no feedback in case of haproxy config errors\nYou need to ssh into a loadbalancer and tail -f /var/log/upstart/orbitctl.log to catch any hidden problems.\n")
 				}
 			},
 		})
