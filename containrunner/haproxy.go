@@ -391,7 +391,9 @@ func (hac *HAProxySettings) UpdateBackends(configuration *RuntimeConfiguration) 
 		//fmt.Printf("Service backend for service_name %s: %+v", service_name, backend_servers)
 		// Check that there actually is configured servers for this backend before dooming that haproxy needs to be restarted
 		if _, ok := current_backends[service_name]; ok == false && len(backend_servers) > 0 {
-			fmt.Printf("Restart required: missing section %s\n", service_name)
+			fmt.Printf("Restart required: missing section %s. Notice that the backend name must match the individual endpoint names.\n", service_name)
+			//fmt.Printf("current backends: %+v\n", current_backends)
+			//fmt.Printf("locally required services: %+v\n", configuration.LocallyRequiredServices)
 			return true, nil
 		}
 		for backendServer := range backend_servers {
