@@ -98,8 +98,7 @@ func main() {
 		containrunnerInstance.EtcdEndpoints = strings.Split(c.String("etcd-endpoint"), ",")
 		containrunnerInstance.EtcdBasePath = c.String("etcd-base-path")
 
-		//globalFlags.Force = c.Bool("force")
-		//fmt.Printf("etcd base path: %s\n", containrunnerInstance.EtcdBasePath)
+		globalFlags.Force = c.Bool("force")
 
 		if c.IsSet("debug") {
 			fmt.Fprintf(os.Stderr, "Turning etcd logging on")
