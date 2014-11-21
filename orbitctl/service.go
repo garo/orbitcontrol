@@ -141,6 +141,12 @@ func init() {
 			Name:  "service",
 			Usage: "Control services",
 			Action: func(c *cli.Context) {
+
+				if len(c.Args()) == 0 {
+					cli.HelpPrinter(serviceHelpTemplate, c.App)
+					return
+				}
+
 				serviceApp.Flags = c.App.Flags
 				serviceApp.HideHelp = true
 				serviceApp.Name = c.Args()[0]
@@ -176,10 +182,7 @@ func getServiceInfo(name string, githubClient *github.Client) (exit int, service
 
 	fmt.Printf("\x1b[1mService %s is currently running revision %s\x1b[0m\n", name, serviceConfiguration.GetRevision())
 
-	fmt.Printf("CI: %+v\n", serviceConfiguration.SourceControl)
-
-	if serviceConfiguration.SourceControl != nil && serviceConfiguration.SourceControl.CIUrl != "" {
-		fmt.Printf("Continuous Integration server url for this service: %s\n", serviceConfiguration.SourceControl.CIUrl)
+	if serviceConfiguration.SourceControl != nil && serviceConfiguration.SourceControl.Origin != "" {
 
 		commit, err = GetCommitInfo(serviceConfiguration.SourceControl, serviceConfiguration.GetRevision(), githubClient)
 		if err != nil {
@@ -188,6 +191,12 @@ func getServiceInfo(name string, githubClient *github.Client) (exit int, service
 		} else {
 			PrintCommitInfo(commit)
 		}
+	} else {
+		fmt.Printf("No SourceControl Origin set for this service, thus there's no commit info available.")
+	}
+
+	if serviceConfiguration.SourceControl != nil && serviceConfiguration.SourceControl.CIUrl != "" {
+		fmt.Printf("Continuous Integration server url for this service: %s\n", serviceConfiguration.SourceControl.CIUrl)
 	}
 
 	fmt.Printf("\n")
@@ -205,9 +214,10 @@ func getServiceInfo(name string, githubClient *github.Client) (exit int, service
 		var deployable_commits = make([]github.RepositoryCommit, 0)
 		if len(commits) > 0 {
 			for _, commit := range commits {
+				fmt.Printf("Commit: %s\n", *commit.SHA)
 				exists, _, err := containrunner.VerifyContainerExistsInRepository(serviceConfiguration.Container.Config.Image, *commit.SHA)
 				if err != nil {
-					fmt.Printf("Error! Unable to get container registry information on newer revisions.\nError: %+v\n", err)
+					fmt.Printf("Error! Unable to get container registry information on newer revision for commit %s\nError: %+v\n", *commit.SHA, err)
 					return 1, serviceConfiguration
 				}
 				if exists && *commit.SHA != serviceConfiguration.GetRevision() {
@@ -229,6 +239,8 @@ func getServiceInfo(name string, githubClient *github.Client) (exit int, service
 			if len(deployable_commits) > 0 {
 				fmt.Printf("\nYou can deploy the newest commit with this command: \x1b[1morbitctl service %s set revision %s\x1b[0m\n\n", name, *deployable_commits[len(deployable_commits)-1].SHA)
 			}
+		} else {
+			fmt.Printf("Service %s is running the latest revision (%s) according to version control.\n", name, commit)
 		}
 	}
 
@@ -376,6 +388,10 @@ func GetNewerCommits(sc *containrunner.SourceControl, newer_than *github.Reposit
 	commits, _, err := client.Repositories.ListCommits(m[1], m[2], &options)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(commits) > 1 {
+		commits = commits[0 : len(commits)-1]
 	}
 
 	return commits, nil
