@@ -221,14 +221,15 @@ func ConvergeContainers(conf MachineConfiguration, preDelay bool, client *docker
 		fmt.Printf("Error on cleaning up old images! %+v\n", err)
 	}
 
+	var somethingFailed error = nil
 	for _, container := range ready_for_launch {
 		err = LaunchContainer(container, preDelay, client)
 		if err != nil {
-			return err
+			somethingFailed = err
 		}
 	}
 
-	return nil
+	return somethingFailed
 }
 
 type Int64Slice []int64
@@ -404,7 +405,7 @@ func LaunchContainer(serviceConfiguration ServiceConfiguration, preDelay bool, c
 	if image == nil {
 		for tries := 0; ; tries++ {
 			if preDelay == true {
-				delay := rand.Intn(60) + 5
+				delay := rand.Intn(20) + 1
 				fmt.Printf("Sleeping %d seconds before pulling image %s\n", delay, imageName)
 				time.Sleep(time.Second * time.Duration(delay))
 			}
@@ -424,13 +425,13 @@ func LaunchContainer(serviceConfiguration ServiceConfiguration, preDelay bool, c
 
 			err = client.PullImage(pullImageOptions, docker.AuthConfiguration{})
 			if err != nil {
-				if tries > 5 {
+				if tries > 2 {
 					fmt.Printf("Could not pull, too many tries. Aborting")
 					return errors.New("Could not pull, too many tries")
 				}
 				fmt.Printf("Could not pull new image, possibly the registry is overloaded. Trying again soon. This was try %d\n%+v\n", tries, err)
 
-				time.Sleep(time.Second * time.Duration(rand.Intn(60)+5))
+				time.Sleep(time.Second * time.Duration(rand.Intn(30)+5))
 			} else {
 				break
 			}
