@@ -59,6 +59,7 @@ func init() {
 func main() {
 	app.Name = "orbitctl"
 	app.Usage = cliDescription
+	app.Version = builddate
 
 	etcdEndpointFlag := cli.StringFlag{
 		Name:   "etcd-endpoint",

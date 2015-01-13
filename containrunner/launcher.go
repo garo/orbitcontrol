@@ -405,7 +405,7 @@ func LaunchContainer(serviceConfiguration ServiceConfiguration, preDelay bool, c
 	if image == nil {
 		for tries := 0; ; tries++ {
 			if preDelay == true {
-				delay := rand.Intn(20) + 1
+				delay := rand.Intn(15) + 1
 				fmt.Printf("Sleeping %d seconds before pulling image %s\n", delay, imageName)
 				time.Sleep(time.Second * time.Duration(delay))
 			}

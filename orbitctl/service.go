@@ -120,6 +120,9 @@ func init() {
 						}
 
 						githubClient := github.NewClient(t.Client())
+						if githubClient == nil {
+							fmt.Printf("Error getting github client\n")
+						}
 
 						retval, serviceConfiguration := getServiceInfo(name, githubClient)
 						if retval != 0 {
@@ -187,7 +190,9 @@ func getServiceInfo(name string, githubClient *github.Client) (exit int, service
 		commit, err = GetCommitInfo(serviceConfiguration.SourceControl, serviceConfiguration.GetRevision(), githubClient)
 		if err != nil {
 			fmt.Printf("Error! Unable to get source control information on revision.\nError: %+v\n", err)
-			return 1, serviceConfiguration
+			if globalFlags.Force == false {
+				return 1, serviceConfiguration
+			}
 		} else {
 			PrintCommitInfo(commit)
 		}
@@ -204,7 +209,7 @@ func getServiceInfo(name string, githubClient *github.Client) (exit int, service
 		fmt.Printf("\x1b[1mDeployment was done at %s (%s ago)\x1b[0m\n", serviceConfiguration.Revision.DeploymentTime, time.Since(serviceConfiguration.Revision.DeploymentTime))
 	}
 
-	if serviceConfiguration.SourceControl != nil && serviceConfiguration.SourceControl.Origin != "" {
+	if serviceConfiguration.SourceControl != nil && serviceConfiguration.SourceControl.Origin != "" && commit != nil {
 		commits, err := GetNewerCommits(serviceConfiguration.SourceControl, commit, githubClient)
 		if err != nil {
 			fmt.Printf("Error! Unable to get source control information on newer revisions.\nError: %+v\n", err)
