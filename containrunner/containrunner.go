@@ -20,6 +20,7 @@ type Containrunner struct {
 	CheckIntervalInMs int
 	HAProxySettings   HAProxySettings
 	EtcdBasePath      string
+	Events            MessageQueuer
 }
 
 type RuntimeConfiguration struct {
@@ -30,6 +31,10 @@ type RuntimeConfiguration struct {
 
 	// Locally required service groups in haproxy, should be refactored away from this struct
 	LocallyRequiredServices map[string]map[string]*EndpointInfo `json:"-" DeepEqual:"skip"`
+}
+
+func (s *Containrunner) Init() {
+	s.Events = new(RabbitMQQueuer)
 }
 
 func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {

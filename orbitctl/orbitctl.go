@@ -53,6 +53,7 @@ func init() {
 	out = new(tabwriter.Writer)
 	out.Init(os.Stdout, 0, 8, 1, '\t', 0)
 	app.EnableBashCompletion = true
+	containrunnerInstance.Init()
 
 }
 
