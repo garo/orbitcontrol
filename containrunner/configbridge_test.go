@@ -17,7 +17,8 @@ var TestingEtcdEndpoints []string = []string{"http://etcd:4001"}
 
 func (s *ConfigBridgeSuite) SetUpTest(c *C) {
 	s.etcd = etcd.NewClient(TestingEtcdEndpoints)
-	s.etcd.DeleteDir("/test/")
+	_, err := s.etcd.RawDelete("/test/", true, true)
+	fmt.Printf("******* ConfigBridgeSuite %+v, err: %+v\n", TestingEtcdEndpoints, err)
 
 }
 
@@ -26,6 +27,8 @@ func (s *ConfigBridgeSuite) TestLoadOrbitConfigurationFromFiles(c *C) {
 
 	orbitConfiguration, err := ct.LoadOrbitConfigurationFromFiles("/Development/go/src/github.com/garo/orbitcontrol/testdata")
 	c.Assert(err, IsNil)
+
+	c.Assert(orbitConfiguration.GlobalOrbitProperties.AMQPUrl, Equals, "amqp://guest:guest@localhost:5672/")
 
 	c.Assert(orbitConfiguration.MachineConfigurations["testtag"].HAProxyConfiguration, Not(IsNil))
 
@@ -85,7 +88,13 @@ func (s *ConfigBridgeSuite) TestUploadOrbitConfigurationToEtcd(c *C) {
 	err = ct.UploadOrbitConfigurationToEtcd(orbitConfiguration, s.etcd)
 	c.Assert(err, IsNil)
 
-	res, err := s.etcd.Get("/test/machineconfigurations/tags/testtag/haproxy_files/500.http", true, true)
+	res, err := s.etcd.Get("/test/globalproperties", true, true)
+	c.Assert(err, IsNil)
+	var gop GlobalOrbitProperties
+	err = json.Unmarshal([]byte(res.Node.Value), &gop)
+	c.Assert(gop.AMQPUrl, Equals, `amqp://guest:guest@localhost:5672/`)
+
+	res, err = s.etcd.Get("/test/machineconfigurations/tags/testtag/haproxy_files/500.http", true, true)
 	c.Assert(err, IsNil)
 	c.Assert(res.Node.Value, Equals, `HTTP/1.0 500 Service Unavailable
 Cache-Control: no-cache
@@ -135,6 +144,21 @@ Content-Type: text/html
 
 	expected := "{\"Name\":\"\",\"EndpointPort\":0,\"Checks\":null,\"Container\":{\"HostConfig\":{\"Binds\":null,\"ContainerIDFile\":\"\",\"LxcConf\":null,\"Privileged\":false,\"PortBindings\":null,\"Links\":null,\"PublishAllPorts\":false,\"Dns\":null,\"DnsSearch\":null,\"VolumesFrom\":null,\"NetworkMode\":\"\"},\"Config\":{\"Hostname\":\"ubuntu-test\",\"Domainname\":\"\",\"User\":\"\",\"Memory\":0,\"MemorySwap\":0,\"CpuShares\":0,\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"PortSpecs\":null,\"ExposedPorts\":null,\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false,\"Env\":[\"NODE_ENV=staging\"],\"Cmd\":null,\"Dns\":null,\"Image\":\"ubuntu\",\"Volumes\":null,\"VolumesFrom\":\"\",\"WorkingDir\":\"\",\"Entrypoint\":null,\"NetworkDisabled\":false}},\"Revision\":null,\"SourceControl\":null,\"Attributes\":null}"
 	c.Assert(res.Node.Value, Equals, expected)
+
+}
+
+func (s *ConfigBridgeSuite) TestGetGlobalOrbitProperties(c *C) {
+	var ct Containrunner
+	ct.EtcdBasePath = "/test"
+
+	gop := GlobalOrbitProperties{}
+	gop.AMQPUrl = "amqp://guest:guest@localhost:5672/"
+	bytes, _ := json.Marshal(gop)
+	_, err := s.etcd.Set("/test/globalproperties", string(bytes), 10)
+
+	gop, err = ct.GetGlobalOrbitProperties(s.etcd)
+	c.Assert(err, IsNil)
+	c.Assert(gop.AMQPUrl, Equals, `amqp://guest:guest@localhost:5672/`)
 
 }
 

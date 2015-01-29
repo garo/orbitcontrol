@@ -34,11 +34,9 @@ func (s *CheckerSuite) TestCheckServiceWorker(c *C) {
 	serviceChecks := ServiceChecks{}
 	serviceChecks.Checks = []ServiceCheck{{Type: "dummy", DummyResult: true}}
 
-	fmt.Println("**** here1")
 	go CheckServiceWorker(serviceChecksChannel, results, "10.0.0.1", 10)
 	serviceChecksChannel <- serviceChecks
 	result := <-results
-	fmt.Println("**** here2")
 
 	c.Assert(result.Ok, Equals, true)
 }

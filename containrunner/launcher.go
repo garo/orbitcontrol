@@ -332,7 +332,7 @@ func (c *ServiceConfiguration) GetRevision() string {
 	} else {
 		m := imageRegexp.FindStringSubmatch(c.Container.Config.Image)
 		if len(m) < 2 {
-			fmt.Printf("Erro getting revision for %s", c.Container.Config.Image)
+			fmt.Printf("Error getting revision for %s\n", c.Container.Config.Image)
 			return ""
 		}
 		return m[2]
@@ -452,39 +452,7 @@ func LaunchContainer(serviceConfiguration ServiceConfiguration, preDelay bool, c
 		serviceConfiguration.Container.HostConfig.DnsSearch = []string{"services.dev.docker"}
 	}
 
-	// Check if we need to stop and remove the old container
-	var existing_containers_info []docker.APIContainers
-	existing_containers_info, err = client.ListContainers(docker.ListContainersOptions{All: true})
-	if err != nil {
-		panic(err)
-	}
-
-	for _, container_info := range existing_containers_info {
-		container := ContainerDetails{APIContainers: container_info}
-		container.Container, err = client.InspectContainer(container.ID)
-		if err != nil {
-			fmt.Printf("error inspecting container. %+v\n", err)
-			panic(err)
-		}
-
-		// For some reason the container name has / prefix (eg. "/comet"). Strip it out
-		if container.Container.Name[0] == '/' {
-			container.Container.Name = container.Container.Name[1:]
-		}
-
-		if container.Container.Name == serviceConfiguration.Name {
-			fmt.Printf("Need to delete this old container container info: %+v\n", container_info)
-			err = client.StopContainer(container.ID, 10)
-			if err != nil {
-				fmt.Printf("Could not stop container: %+v. Err: %+v\n", container_info, err)
-			}
-			err = client.RemoveContainer(docker.RemoveContainerOptions{container.ID, true, true})
-			if err != nil {
-				fmt.Printf("Could not remove container: %+v. Err: %+v\n", container_info, err)
-			}
-			break
-		}
-	}
+	DestroyContainer(serviceConfiguration.Name, client)
 
 	fmt.Println("Creating container", options)
 	log.Info(LogEvent(ContainerLogEvent{"create-and-launch", imageName, serviceConfiguration.Name}))
@@ -497,6 +465,44 @@ func LaunchContainer(serviceConfiguration ServiceConfiguration, preDelay bool, c
 	if err != nil {
 		log.Error("Could not start container")
 		panic(err)
+	}
+
+	return nil
+}
+
+func DestroyContainer(name string, client *docker.Client) error {
+
+	// Check if we need to stop and remove the old container
+	var existing_containers_info []docker.APIContainers
+	existing_containers_info, err := client.ListContainers(docker.ListContainersOptions{All: true})
+	if err != nil {
+		return err
+	}
+
+	for _, container_info := range existing_containers_info {
+		container := ContainerDetails{APIContainers: container_info}
+		container.Container, err = client.InspectContainer(container.ID)
+		if err != nil {
+			fmt.Printf("error inspecting container. %+v\n", err)
+		}
+
+		// For some reason the container name has / prefix (eg. "/comet"). Strip it out
+		if container.Container.Name[0] == '/' {
+			container.Container.Name = container.Container.Name[1:]
+		}
+
+		if container.Container.Name == name {
+			fmt.Printf("Stopping container %+v\n", container_info)
+			err = client.StopContainer(container.ID, 10)
+			if err != nil {
+				fmt.Printf("Could not stop container: %+v. Err: %+v\n", container_info, err)
+			}
+			err = client.RemoveContainer(docker.RemoveContainerOptions{container.ID, true, true})
+			if err != nil {
+				fmt.Printf("Could not remove container: %+v. Err: %+v\n", container_info, err)
+			}
+			break
+		}
 	}
 
 	return nil

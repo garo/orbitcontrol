@@ -3,9 +3,6 @@ package main
 import (
 	"fmt"
 	"github.com/codegangsta/cli"
-	"github.com/garo/orbitcontrol/containrunner"
-
-	"time"
 )
 
 func init() {
@@ -26,25 +23,27 @@ func init() {
 							return
 						}
 
-						if c.Args().First() != "" {
-							for {
-								fmt.Printf("publish string to queue: '%s'\n", c.Args().First())
+						/*
+							if c.Args().First() != "" {
+								for {
+									fmt.Printf("publish string to queue: '%s'\n", c.Args().First())
 
-								e := containrunner.DeploymentEvent{
-									"service name",
-									"user name",
-									"revision id",
+									e := containrunner.DeploymentEvent{
+										"service name",
+										"user name",
+										"revision id",
+									}
+
+									fmt.Printf("Publishing to mq\n")
+									err := events.PublishDeploymentEvent(time.Now(), e)
+									if err != nil {
+										fmt.Printf("Error on publish: %+v\n", err)
+									}
+
+									time.Sleep(5 * time.Second)
 								}
-
-								fmt.Printf("Publishing to mq\n")
-								err := events.PublishDeploymentEvent(time.Now(), e)
-								if err != nil {
-									fmt.Printf("Error on publish: %+v\n", err)
-								}
-
-								time.Sleep(5 * time.Second)
 							}
-						}
+						*/
 					},
 				},
 

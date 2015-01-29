@@ -18,6 +18,7 @@ import (
 /*
 	Data model referred
 	/orbit/env <-- file contents tells the environment
+	/orbit/globalproperties				// JSON file containing GlobalOrbitProperties data
 	/orbit/services/<name>/config
 	/orbit/services/<name>/revision	// contains revision string inside which overwrites the set revision in /config
 	/orbit/services/<name>/endpoints/<endpoint host:port>
@@ -36,6 +37,11 @@ import (
 type OrbitConfiguration struct {
 	MachineConfigurations map[string]MachineConfiguration
 	Services              map[string]ServiceConfiguration
+	GlobalOrbitProperties GlobalOrbitProperties
+}
+
+type GlobalOrbitProperties struct {
+	AMQPUrl string
 }
 
 // Represents a single tag inside a /orbit/machineconfiguration/
@@ -180,6 +186,17 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 	oc.MachineConfigurations = make(map[string]MachineConfiguration)
 	oc.Services = make(map[string]ServiceConfiguration)
 
+	file := startpath + "/globalproperties.json"
+	if _, err := os.Stat(file); err == nil {
+		bytes, err := ioutil.ReadFile(file)
+		err = json.Unmarshal(bytes, &oc.GlobalOrbitProperties)
+		if err != nil {
+			return nil, errors.New(fmt.Sprintf("LoadConfigurationsFromFiles: Could not load globalproperties.json due to error %+v", err))
+		} else {
+			fmt.Printf("Read globalproperties from %s\n", file)
+		}
+	}
+
 	files, err := ioutil.ReadDir(startpath + "/services/")
 	if err != nil {
 		return nil, err
@@ -316,6 +333,12 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 	if etcdClient == nil {
 		etcdClient = GetEtcdClient(c.EtcdEndpoints)
 		fmt.Fprintf(os.Stderr, "EtcdEndpoints: %s\n", c.EtcdEndpoints)
+	}
+
+	bytes, err := json.Marshal(orbitConfiguration.GlobalOrbitProperties)
+	_, err = etcdClient.Set(c.EtcdBasePath+"/globalproperties", string(bytes), 0)
+	if err != nil {
+		return err
 	}
 
 	for tag, mc := range orbitConfiguration.MachineConfigurations {
@@ -527,6 +550,25 @@ func (c *Containrunner) GetServiceByName(name string, etcdClient *etcd.Client, m
 	}
 
 	return serviceConfiguration, nil
+}
+
+func (c *Containrunner) GetGlobalOrbitProperties(etcdClient *etcd.Client) (GlobalOrbitProperties, error) {
+	gop := GlobalOrbitProperties{}
+
+	key := c.EtcdBasePath + "/globalproperties"
+	res, err := etcdClient.Get(key, true, true)
+
+	if err != nil {
+		if !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
+			return gop, err
+		} else {
+			return gop, nil
+		}
+	}
+
+	err = json.Unmarshal([]byte(res.Node.Value), &gop)
+
+	return gop, err
 }
 
 func (c *Containrunner) GetKnownTags() ([]string, error) {

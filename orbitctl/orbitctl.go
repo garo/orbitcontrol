@@ -53,7 +53,6 @@ func init() {
 	out = new(tabwriter.Writer)
 	out.Init(os.Stdout, 0, 8, 1, '\t', 0)
 	app.EnableBashCompletion = true
-	containrunnerInstance.Init()
 
 }
 
@@ -106,6 +105,8 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Turning etcd logging on")
 			etcd.SetLogger(log.New(os.Stderr, "go-etcd", log.LstdFlags))
 		}
+
+		containrunnerInstance.Init()
 
 		return nil
 	}

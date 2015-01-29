@@ -17,7 +17,7 @@ func (s *VerifySuite) SetUpTest(c *C) {
 }
 
 func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryTesttagMissing(c *C) {
-	s.etcd.Delete("/test2/", true)
+	s.etcd.RawDelete("/test2/", true, true)
 
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test2"
@@ -33,7 +33,7 @@ func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceUbuntuMissing(
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test2"
 
-	s.etcd.Delete(containrunner.EtcdBasePath, true)
+	s.etcd.RawDelete(containrunner.EtcdBasePath, true, true)
 
 	_, err := s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
 
@@ -48,11 +48,13 @@ func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceubuntuConfigMi
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test2"
 
-	s.etcd.Delete(containrunner.EtcdBasePath, true)
+	s.etcd.RawDelete(containrunner.EtcdBasePath, true, true)
 
 	_, err := s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
 
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/services/ubuntu/", 10)
+	s.etcd.CreateDir(containrunner.EtcdBasePath+"/services/test/", 10)
+	s.etcd.Set(containrunner.EtcdBasePath+"/services/test/config", `{"Name": "test","EndpointPort":3501,"Container":{"HostConfig":{"Binds":["/tmp:/data"],"NetworkMode":"host"},"Config":{"Env":["NODE_ENV=vagrant"],"AttachStderr":false,"AttachStdin":false,"AttachStdout": false,"OpenStdin": false,"Image":"test"}},"Attributes":{}}`, 10)
 
 	localoc, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
 	localoc.MachineConfigurations = nil
@@ -65,7 +67,7 @@ func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceubuntuConfigIn
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test2"
 
-	s.etcd.Delete(containrunner.EtcdBasePath, true)
+	s.etcd.RawDelete(containrunner.EtcdBasePath, true, true)
 
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
 
@@ -83,13 +85,16 @@ func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceubuntuConfiOk(
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test2"
 
-	s.etcd.Delete(containrunner.EtcdBasePath, true)
+	s.etcd.RawDelete(containrunner.EtcdBasePath, true, true)
 
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/services/ubuntu/", 10)
+	s.etcd.CreateDir(containrunner.EtcdBasePath+"/services/test/", 10)
 
 	var ubuntu = `{"Name":"ubuntu","EndpointPort":3500,"Checks":[{"Type":"http","Url":"http://127.0.0.1:3500/check","HttpHost":"","Username":"","Password":"","HostPort":"","DummyResult":false,"ExpectHttpStatus":"","ExpectString":"","ConnectTimeout":0,"ResponseTimeout":0,"Delay":0}],"Container":{"HostConfig":{"Binds":["/tmp:/data"],"ContainerIDFile":"","LxcConf":null,"Privileged":false,"PortBindings":null,"Links":null,"PublishAllPorts":false,"Dns":null,"DnsSearch":null,"VolumesFrom":null,"NetworkMode":"host"},"Config":{"Hostname":"","Domainname":"","User":"","Memory":0,"MemorySwap":0,"CpuShares":0,"AttachStdin":false,"AttachStdout":false,"AttachStderr":false,"PortSpecs":null,"ExposedPorts":null,"Tty":false,"OpenStdin":false,"StdinOnce":false,"Env":["NODE_ENV=vagrant"],"Cmd":null,"Dns":null,"Image":"ubuntu","Volumes":null,"VolumesFrom":"","WorkingDir":"","Entrypoint":null,"NetworkDisabled":false}},"Revision":null,"SourceControl":{"Origin":"github.com/Applifier/ubuntu","OAuthToken":"","CIUrl":""},"Attributes":{}}`
 	s.etcd.Set(containrunner.EtcdBasePath+"/services/ubuntu/config", ubuntu, 10)
+
+	s.etcd.Set(containrunner.EtcdBasePath+"/services/test/config", `{"Name": "test","EndpointPort":3501,"Container":{"HostConfig":{"Binds":["/tmp:/data"],"NetworkMode":"host"},"Config":{"Env":["NODE_ENV=vagrant"],"AttachStderr":false,"AttachStdin":false,"AttachStdout": false,"OpenStdin": false,"Image":"test"}},"Attributes":{}}`, 10)
 
 	localoc, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
 	localoc.MachineConfigurations = nil
@@ -102,7 +107,7 @@ func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceTagServiceDirM
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test2"
 
-	s.etcd.Delete(containrunner.EtcdBasePath, true)
+	s.etcd.RawDelete(containrunner.EtcdBasePath, true, true)
 
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
 
@@ -116,7 +121,7 @@ func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceTagServiceDirS
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test2"
 
-	s.etcd.Delete(containrunner.EtcdBasePath, true)
+	s.etcd.RawDelete(containrunner.EtcdBasePath, true, true)
 
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services", 10)
@@ -130,7 +135,7 @@ func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceTagServiceDirS
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test2"
 
-	s.etcd.Delete(containrunner.EtcdBasePath, true)
+	s.etcd.RawDelete(containrunner.EtcdBasePath, true, true)
 
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services", 10)
@@ -145,7 +150,7 @@ func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceTagServiceDirS
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test2"
 
-	s.etcd.Delete(containrunner.EtcdBasePath, true)
+	s.etcd.RawDelete(containrunner.EtcdBasePath, true, true)
 
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services", 10)
@@ -160,7 +165,7 @@ func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceTagServiceDirS
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test2"
 
-	s.etcd.Delete(containrunner.EtcdBasePath, true)
+	s.etcd.RawDelete(containrunner.EtcdBasePath, true, true)
 
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services", 10)
@@ -190,7 +195,7 @@ func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceTagServiceDirS
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test2"
 
-	s.etcd.Delete(containrunner.EtcdBasePath, true)
+	s.etcd.RawDelete(containrunner.EtcdBasePath, true, true)
 
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services", 10)
@@ -224,7 +229,7 @@ func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceTagHaproxyTemp
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test2"
 
-	s.etcd.Delete(containrunner.EtcdBasePath, true)
+	s.etcd.RawDelete(containrunner.EtcdBasePath, true, true)
 
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services", 10)
@@ -256,7 +261,7 @@ func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceTagHaproxyTemp
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test2"
 
-	s.etcd.Delete(containrunner.EtcdBasePath, true)
+	s.etcd.RawDelete(containrunner.EtcdBasePath, true, true)
 
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/", 10)
 	s.etcd.CreateDir(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services", 10)
@@ -286,7 +291,7 @@ func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryServiceTagHaproxyTemp
 }
 
 func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryNoProblems(c *C) {
-	s.etcd.Delete("/test3/", true)
+	s.etcd.RawDelete("/test3/", true, true)
 
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test3"
@@ -322,6 +327,34 @@ func (s *ConfigBridgeSuite) TestVerifyAgainstLocalDirectoryNoProblems(c *C) {
 			"Hostname": "ubuntu-test"
 		}
 	}
+}
+`, 10)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = s.etcd.Set(containrunner.EtcdBasePath+"/machineconfigurations/tags/testtag/services/test", `{
+	"Name": "test",
+	"EndpointPort":3501,
+	"Container" : {
+		"HostConfig" : {
+			"Binds": [
+				"/tmp:/data"
+			],
+			"NetworkMode" : "host"
+		},
+		"Config": {
+			"Env": [
+				"NODE_ENV=vagrant"
+			],
+			"AttachStderr": false,
+			"AttachStdin": false,
+			"AttachStdout": false,
+			"OpenStdin": false,
+			"Image": "test"
+		}
+	},
+	"Attributes":{}
 }
 `, 10)
 	if err != nil {

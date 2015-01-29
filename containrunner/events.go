@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/streadway/amqp"
 	"os"
+	"reflect"
 	"time"
 )
 
@@ -12,7 +13,7 @@ type MessageQueuer interface {
 	Init(amqp_address string) error
 	Declare() error
 	GetReceiveredEventChannel() <-chan OrbitEvent
-	PublishDeploymentEvent(ts time.Time, event DeploymentEvent) error
+	PublishOrbitEvent(event OrbitEvent) error
 }
 
 type RabbitMQQueuer struct {
@@ -30,12 +31,77 @@ type OrbitEvent struct {
 	Ts    time.Time
 	Type  string
 	Event *json.RawMessage
+	Ptr   interface{} `json:"-"`
+}
+
+func (e *OrbitEvent) String() string {
+	bytes, _ := json.Marshal(e.Ptr)
+	rawMsg := json.RawMessage(bytes)
+	e.Event = &rawMsg
+
+	bytes, _ = json.Marshal(e)
+	return string(bytes)
+}
+
+type RelaunchContainerEvent struct {
+	Name string
 }
 
 type DeploymentEvent struct {
 	Service  string
 	User     string
 	Revision string
+}
+
+type NoopEvent struct {
+	Data string
+}
+
+func NewOrbitEvent(event interface{}) OrbitEvent {
+	oe := OrbitEvent{}
+	oe.Ts = time.Now()
+	oe.Type = reflect.TypeOf(event).Name()
+	oe.Ptr = event
+
+	return oe
+}
+
+func NewOrbitEventFromString(str string) (OrbitEvent, error) {
+	var e OrbitEvent
+	err := json.Unmarshal([]byte(str), &e)
+	if err != nil {
+		return e, err
+	}
+
+	switch e.Type {
+	case "NoopEvent":
+		var ee NoopEvent
+		err := json.Unmarshal(*e.Event, &ee)
+		if err != nil {
+			return e, err
+		}
+		e.Ptr = ee
+		break
+	case "DeploymentEvent":
+		var ee DeploymentEvent
+		err := json.Unmarshal(*e.Event, &ee)
+		if err != nil {
+			return e, err
+		}
+		e.Ptr = ee
+		break
+	case "RelaunchContainerEvent":
+		var ee RelaunchContainerEvent
+		err := json.Unmarshal(*e.Event, &ee)
+		if err != nil {
+			return e, err
+		}
+		e.Ptr = ee
+		break
+
+	}
+
+	return e, nil
 }
 
 func (d *RabbitMQQueuer) Init(amqp_address string) error {
@@ -218,8 +284,7 @@ func (d *RabbitMQQueuer) Declare() error {
 
 func (d *RabbitMQQueuer) eventConsumer(destination chan<- OrbitEvent, msgs <-chan amqp.Delivery) {
 	for delivery := range msgs {
-		var orbitEvent OrbitEvent
-		err := json.Unmarshal(delivery.Body, &orbitEvent)
+		orbitEvent, err := NewOrbitEventFromString(string(delivery.Body))
 		if err != nil {
 			fmt.Printf("Got error on json unmarshal: %+v. Discarding message.\n", err)
 		} else {
@@ -240,36 +305,16 @@ func (d *RabbitMQQueuer) Close() {
 	d.conn = nil
 }
 
-func (d *RabbitMQQueuer) PublishDeploymentEvent(ts time.Time, event DeploymentEvent) error {
-	bytes, err := json.Marshal(event)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Could not marshall event %+v due to err %+v", event, err)
-	}
-
-	oe := OrbitEvent{}
-	oe.Ts = ts
-	oe.Type = "DeploymentEvent"
-	rawMsg := json.RawMessage(bytes)
-	oe.Event = &rawMsg
-
-	d.PublishOrbitEvent(oe)
-	return err
-}
-
 func (d *RabbitMQQueuer) PublishOrbitEvent(oe OrbitEvent) error {
-	bytes, err := json.Marshal(oe)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Could not marshall base event %+v due to err %+v", oe, err)
-	}
 
-	err = d.ch.Publish(
+	err := d.ch.Publish(
 		"orbitctl.deployment_events", // exchange
 		oe.Type, // routing key
 		false,   // mandatory
 		false,   // immediate
 		amqp.Publishing{
 			ContentType:  "application/json",
-			Body:         bytes,
+			Body:         []byte(oe.String()),
 			DeliveryMode: 2,
 		})
 

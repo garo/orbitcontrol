@@ -69,6 +69,14 @@ func init() {
 	}
 	serviceApp.Commands = []cli.Command{
 		{
+			Name: "relaunch",
+			Action: func(c *cli.Context) {
+				fmt.Printf("Sending relaunch signal for container %s\n", c.App.Name)
+				event := containrunner.NewOrbitEvent(containrunner.RelaunchContainerEvent{c.App.Name})
+				containrunnerInstance.Events.PublishOrbitEvent(event)
+			},
+		},
+		{
 			Name:     "set",
 			HideHelp: true,
 
@@ -183,7 +191,10 @@ func getServiceInfo(name string, githubClient *github.Client) (exit int, service
 
 	var commit *github.RepositoryCommit
 
-	fmt.Printf("\x1b[1mService %s is currently running revision %s\x1b[0m\n", name, serviceConfiguration.GetRevision())
+	revision := serviceConfiguration.GetRevision()
+	if revision != "" {
+		fmt.Printf("\x1b[1mService %s is currently running revision %s\x1b[0m\n", name, revision)
+	}
 
 	if serviceConfiguration.SourceControl != nil && serviceConfiguration.SourceControl.Origin != "" {
 
