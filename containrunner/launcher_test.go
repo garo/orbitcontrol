@@ -1,9 +1,11 @@
 package containrunner
 
-import "testing"
-
-import . "gopkg.in/check.v1"
-import "github.com/fsouza/go-dockerclient"
+import (
+	"fmt"
+	"github.com/fsouza/go-dockerclient"
+	. "gopkg.in/check.v1"
+	"testing"
+)
 
 //import "github.com/stretchr/testify/mock"
 
@@ -31,7 +33,9 @@ func (s *MySuite) TestConvergeContainers(c *C) {
 
 	var containrunner Containrunner
 	conf, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
+	fmt.Printf("***** TestConvergeContainers\n")
 	ConvergeContainers(conf.MachineConfigurations["testtag"], false, s.client)
+
 }
 
 func (s *MySuite) TestFindMatchingContainers_AllMatch(c *C) {
@@ -282,5 +286,15 @@ func (s *MySuite) TestGetContainerImageNameWithRevision(c *C) {
 	required_service.Revision = nil
 	revision = GetContainerImageNameWithRevision(required_service, "")
 	c.Assert(revision, Equals, "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2")
+
+	required_service.Revision = nil
+	required_service.Container.Config.Image = "registry.applifier.info:5000/comet"
+	revision = GetContainerImageNameWithRevision(required_service, "")
+	c.Assert(revision, Equals, "registry.applifier.info:5000/comet:latest")
+
+	required_service.Revision = nil
+	required_service.Container.Config.Image = "ubuntu"
+	revision = GetContainerImageNameWithRevision(required_service, "")
+	c.Assert(revision, Equals, "ubuntu:latest")
 
 }

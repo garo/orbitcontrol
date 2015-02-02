@@ -7,7 +7,6 @@ import (
 	"github.com/fsouza/go-dockerclient"
 	"io/ioutil"
 	"math/rand"
-	"net"
 	"net/http"
 	"os"
 	"regexp"
@@ -216,14 +215,24 @@ func ConvergeContainers(conf MachineConfiguration, preDelay bool, client *docker
 		}
 	}
 
-	err = CleanupOldAuthoritativeImages(conf.AuthoritativeNames, client)
+	var preserveImages []string = []string{}
+	for _, container := range ready_for_launch {
+		imageName := GetContainerImageNameWithRevision(container, "")
+		preserveImages = append(preserveImages, imageName)
+	}
+
+	fmt.Printf("Preserving images %+v\n", preserveImages)
+
+	err = CleanupOldAuthoritativeImages(conf.AuthoritativeNames, preserveImages, client)
 	if err != nil {
 		fmt.Printf("Error on cleaning up old images! %+v\n", err)
 	}
 
 	var somethingFailed error = nil
 	for _, container := range ready_for_launch {
-		err = LaunchContainer(container, preDelay, client)
+		imageName := GetContainerImageNameWithRevision(container, "")
+
+		err = LaunchContainer(container.Name, imageName, container.Container, preDelay, client)
 		if err != nil {
 			somethingFailed = err
 		}
@@ -238,11 +247,21 @@ func (a Int64Slice) Len() int           { return len(a) }
 func (a Int64Slice) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a Int64Slice) Less(i, j int) bool { return a[i] < a[j] }
 
+func stringInSlice(a string, list []string) bool {
+	for _, b := range list {
+		if b == a {
+			return true
+		}
+	}
+	return false
+}
+
 /**
  * Cleans up old revisions for all images in the authoritative_names list. Leaves two newest revision/tag
- * per image.
+ * per image. preserve_names can be used to list images which must be preserved, for example images that we know
+ * want to run in the near future.
  */
-func CleanupOldAuthoritativeImages(authoritative_names []string, client *docker.Client) error {
+func CleanupOldAuthoritativeImages(authoritative_names []string, preserve_names []string, client *docker.Client) error {
 	var imageRegexp = regexp.MustCompile("(.+):(.+)")
 
 	storedImages, err := client.ListImages(false)
@@ -282,8 +301,18 @@ func CleanupOldAuthoritativeImages(authoritative_names []string, client *docker.
 			for _, image := range images {
 				_, found := createdMap[image.Created]
 				if !found {
-					createdMap[image.Created] = image
-					keys = append(keys, image.Created)
+					preserve := false
+					for _, pn := range preserve_names {
+						if stringInSlice(pn, image.RepoTags) {
+							preserve = true
+						}
+					}
+					if !preserve {
+						createdMap[image.Created] = image
+						keys = append(keys, image.Created)
+					} else {
+						fmt.Printf("Preserving image %+v\n", image)
+					}
 				}
 			}
 
@@ -306,22 +335,27 @@ func CleanupOldAuthoritativeImages(authoritative_names []string, client *docker.
 }
 
 func GetContainerImageNameWithRevision(serviceConfiguration ServiceConfiguration, revision string) string {
-	var imageRegexp = regexp.MustCompile("(.+):")
+	var imageRegexp = regexp.MustCompile("^(.+/.+):(.+?)$")
 
 	if revision == "" && serviceConfiguration.Revision != nil && serviceConfiguration.Revision.Revision != "" {
 		revision = serviceConfiguration.Revision.Revision
 	}
 
-	if revision != "" {
-		m := imageRegexp.FindStringSubmatch(serviceConfiguration.Container.Config.Image)
-		if len(m) == 0 {
+	m := imageRegexp.FindStringSubmatch(serviceConfiguration.Container.Config.Image)
+	if len(m) == 0 {
+		if revision != "" {
 			return serviceConfiguration.Container.Config.Image + ":" + revision
+		} else {
+			return serviceConfiguration.Container.Config.Image + ":latest"
 		}
-		return m[1] + ":" + revision
-
+	} else {
+		if revision != "" {
+			return m[1] + ":" + revision
+		} else {
+			return serviceConfiguration.Container.Config.Image
+		}
 	}
 
-	return serviceConfiguration.Container.Config.Image
 }
 
 func (c *ServiceConfiguration) GetRevision() string {
@@ -393,9 +427,7 @@ func VerifyContainerExistsInRepository(image_name string, overrided_revision str
 	return true, data.LastUpdate, nil
 }
 
-func LaunchContainer(serviceConfiguration ServiceConfiguration, preDelay bool, client *docker.Client) error {
-
-	imageName := GetContainerImageNameWithRevision(serviceConfiguration, "")
+func LaunchContainer(name string, imageName string, container *ContainerConfiguration, preDelay bool, client *docker.Client) error {
 
 	image, err := GetContainerImage(imageName, client)
 	if err != nil {
@@ -440,28 +472,21 @@ func LaunchContainer(serviceConfiguration ServiceConfiguration, preDelay bool, c
 	}
 
 	var options docker.CreateContainerOptions
-	options.Name = serviceConfiguration.Name
-	var config docker.Config = serviceConfiguration.Container.Config
+	options.Name = name
+	var config docker.Config = container.Config
 	config.Image = imageName
 	options.Config = &config
 
-	var addresses []string
-	addresses, err = net.LookupHost("skydns.services.dev.docker")
-	if err == nil {
-		serviceConfiguration.Container.HostConfig.Dns = []string{addresses[0]}
-		serviceConfiguration.Container.HostConfig.DnsSearch = []string{"services.dev.docker"}
-	}
-
-	DestroyContainer(serviceConfiguration.Name, client)
+	DestroyContainer(name, client)
 
 	fmt.Println("Creating container", options)
-	log.Info(LogEvent(ContainerLogEvent{"create-and-launch", imageName, serviceConfiguration.Name}))
-	container, err := client.CreateContainer(options)
+	log.Info(LogEvent(ContainerLogEvent{"create-and-launch", imageName, name}))
+	new_container, err := client.CreateContainer(options)
 	if err != nil {
 		panic(err)
 	}
 
-	err = client.StartContainer(container.ID, &serviceConfiguration.Container.HostConfig)
+	err = client.StartContainer(new_container.ID, &container.HostConfig)
 	if err != nil {
 		log.Error("Could not start container")
 		panic(err)

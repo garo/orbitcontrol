@@ -34,6 +34,21 @@ type OrbitEvent struct {
 	Ptr   interface{} `json:"-"`
 }
 
+type RelaunchContainerEvent struct {
+	Name string
+}
+
+type DeploymentEvent struct {
+	Service        string
+	User           string
+	Revision       string
+	MachineAddress string
+}
+
+type NoopEvent struct {
+	Data string
+}
+
 func (e *OrbitEvent) String() string {
 	bytes, _ := json.Marshal(e.Ptr)
 	rawMsg := json.RawMessage(bytes)
@@ -41,20 +56,6 @@ func (e *OrbitEvent) String() string {
 
 	bytes, _ = json.Marshal(e)
 	return string(bytes)
-}
-
-type RelaunchContainerEvent struct {
-	Name string
-}
-
-type DeploymentEvent struct {
-	Service  string
-	User     string
-	Revision string
-}
-
-type NoopEvent struct {
-	Data string
 }
 
 func NewOrbitEvent(event interface{}) OrbitEvent {

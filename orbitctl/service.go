@@ -20,15 +20,15 @@ import (
 	"bufio"
 	"code.google.com/p/goauth2/oauth"
 	"errors"
+	"fmt"
+	"github.com/codegangsta/cli"
 	"github.com/garo/orbitcontrol/containrunner"
 	"github.com/google/go-github/github"
 	"os"
+	"os/user"
 	"regexp"
 	"strings"
 	"time"
-
-	"fmt"
-	"github.com/codegangsta/cli"
 )
 
 var serviceHelpTemplate = `NAME:
@@ -73,7 +73,11 @@ func init() {
 			Action: func(c *cli.Context) {
 				fmt.Printf("Sending relaunch signal for container %s\n", c.App.Name)
 				event := containrunner.NewOrbitEvent(containrunner.RelaunchContainerEvent{c.App.Name})
-				containrunnerInstance.Events.PublishOrbitEvent(event)
+				if containrunnerInstance.Events != nil {
+					containrunnerInstance.Events.PublishOrbitEvent(event)
+				} else {
+					fmt.Printf("Error, Events subsystem not enabled. Maybe RabbitMQ is not configured?")
+				}
 			},
 		},
 		{
@@ -141,6 +145,21 @@ func init() {
 						if retval != 0 {
 							os.Exit(retval)
 						}
+						deploymentEvent := containrunner.DeploymentEvent{}
+						deploymentEvent.Service = name
+						deploymentEvent.Revision = revision
+						deploymentEvent.MachineAddress = machineAddress
+						user, err := user.Current()
+						if err == nil {
+							deploymentEvent.User = user.Username
+						}
+						event := containrunner.NewOrbitEvent(deploymentEvent)
+						if containrunnerInstance.Events != nil {
+							containrunnerInstance.Events.PublishOrbitEvent(event)
+						} else {
+							fmt.Printf("Error, Events subsystem not enabled. Maybe RabbitMQ is not configured?")
+						}
+
 					},
 				},
 			},

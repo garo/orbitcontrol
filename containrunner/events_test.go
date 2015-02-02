@@ -26,6 +26,7 @@ func (s *EventsSuite) TestPublishAndConsume(c *C) {
 		"service name",
 		"user name",
 		"revision id",
+		"machine address",
 	})
 
 	fmt.Printf("Publishing to mq\n")
