@@ -107,7 +107,7 @@ func main() {
 		}
 
 		// dblog is a special case which doesn't want the containrunner to be initiated.
-		if c.Args()[0] != "dblog" {
+		if len(c.Args()) > 0 && c.Args()[0] != "dblog" {
 			containrunnerInstance.Init()
 		}
 
