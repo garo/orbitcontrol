@@ -72,7 +72,10 @@ func init() {
 			Name: "relaunch",
 			Action: func(c *cli.Context) {
 				fmt.Printf("Sending relaunch signal for container %s\n", c.App.Name)
-				event := containrunner.NewOrbitEvent(containrunner.RelaunchContainerEvent{c.App.Name})
+				deploymentEvent := containrunner.DeploymentEvent{}
+				deploymentEvent.Action = "RelaunchContainer"
+				deploymentEvent.Service = c.App.Name
+				event := containrunner.NewOrbitEvent(deploymentEvent)
 				if containrunnerInstance.Events != nil {
 					containrunnerInstance.Events.PublishOrbitEvent(event)
 				} else {

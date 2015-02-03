@@ -1,43 +1,16 @@
 package containrunner
 
 import (
-	"crypto/rand"
 	"database/sql"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
+	"time"
 )
 
-func pseudo_uuid() string {
-
-	b := make([]byte, 16)
-	_, err := rand.Read(b)
-	if err != nil {
-		fmt.Println("Error: ", err)
-		return ""
-	}
-
-	return fmt.Sprintf("%X-%X-%X-%X-%X", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
-}
-
-type DbEvent struct {
-	id       string
-	event    string
-	service  string
-	user     string
-	revision string
-}
-
-func NewDbEvent() DbEvent {
-	e := DbEvent{}
-	e.id = pseudo_uuid()
-
-	return e
-}
-
 type DbLog struct {
-	db         *sql.DB
-	table      string
-	store_stmt *sql.Stmt
+	db                     *sql.DB
+	table_prefix           string
+	store_deployment_event *sql.Stmt
 }
 
 func (d *DbLog) Init(db string) error {
@@ -53,11 +26,13 @@ func (d *DbLog) Init(db string) error {
 		return err
 	}
 
-	if d.table == "" {
-		d.table = "orbit_events"
+	if d.table_prefix == "" {
+		d.table_prefix = "orbit"
 	}
 
-	d.store_stmt, err = d.db.Prepare("INSERT INTO " + d.table + " (id, event, service, user, revision, ts) VALUES(?, ?, ?, ?, ?, now())")
+	d.PrepareSchema()
+
+	d.store_deployment_event, err = d.db.Prepare("INSERT INTO " + d.table_prefix + "_deployment_events (ts, action, service, revision, machine_address, user) VALUES(?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		log.Fatal(err)
 		return err
@@ -66,8 +41,62 @@ func (d *DbLog) Init(db string) error {
 	return nil
 }
 
-func (d *DbLog) StoreEvent(event DbEvent) error {
-	log.Info("statement: %+v", d.store_stmt)
-	_, err := d.store_stmt.Exec(event.id, event.event, event.service, event.user, event.revision)
-	return err
+func (d *DbLog) PrepareSchema() error {
+	fmt.Printf("PrepareSchema started\n")
+	var r int
+	err := d.db.QueryRow("SELECT 1 FROM " + d.table_prefix + "_deployment_events LIMIT 1").Scan(&r)
+	if err != nil && err != sql.ErrNoRows {
+
+		rows, err := d.db.Query(`CREATE TABLE ` + d.table_prefix + `_deployment_events (
+    		id INT AUTO_INCREMENT PRIMARY KEY,
+    		ts TIMESTAMP NOT NULL,
+    		action VARCHAR(20) NOT NULL,
+    		service VARCHAR(100) NOT NULL,
+    		revision VARCHAR(100),
+    		machine_address VARCHAR(60),
+    		user varchar(16)
+    		)
+    		`)
+
+		if rows != nil {
+			defer rows.Close()
+		}
+		if err != nil {
+			fmt.Printf("Could not create schema for table deployment_events")
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *DbLog) StoreEvent(event OrbitEvent) error {
+
+	switch event.Type {
+	case "NoopEvent":
+		break
+	case "DeploymentEvent":
+		_, err := d.StoreDeploymentEvent(event.Ptr.(DeploymentEvent), event.Ts)
+		return err
+		break
+	}
+
+	return nil
+}
+
+func (d *DbLog) StoreDeploymentEvent(e DeploymentEvent, ts time.Time) (int64, error) {
+	transaction, err := d.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	result, err := d.store_deployment_event.Exec(ts, e.Action, e.Service, e.Revision, e.MachineAddress, e.User)
+	if err != nil {
+		transaction.Rollback()
+		return 0, err
+	}
+	lastInsertId, _ := result.LastInsertId()
+	err = transaction.Commit()
+	if err != nil {
+		return 0, err
+	}
+	return lastInsertId, err
 }

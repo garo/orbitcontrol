@@ -54,7 +54,9 @@ func (s *Containrunner) Init() {
 	if globalConfiguration.AMQPUrl != "" {
 		log.Info("Connecting to AMQP: %s\n", globalConfiguration.AMQPUrl)
 		s.Events = new(RabbitMQQueuer)
-		err = s.Events.Init(globalConfiguration.AMQPUrl)
+
+		// Start to listen events on an anonymous queue
+		err = s.Events.Init(globalConfiguration.AMQPUrl, "")
 		if err != nil {
 			log.Info(LogString("Error connecting to message broker"))
 		} else {
@@ -93,21 +95,27 @@ func EventHandler(incomingNetworkEvents <-chan OrbitEvent, incomingLoopbackEvent
 		case "NoopEvent":
 			fmt.Printf("Got NoopEvent %+v\n", receiveredEvent)
 			break
-		case "RelaunchContainerEvent":
-			go HandleRelaunchContainerEvent(receiveredEvent)
+		case "DeploymentEvent":
+			go HandleDeploymentEvent(receiveredEvent)
 			break
 		}
 	}
 }
 
-func HandleRelaunchContainerEvent(event OrbitEvent) {
+func HandleDeploymentEvent(deploymentEvent OrbitEvent) {
 	docker := GetDockerClient()
-	fmt.Printf("Got RelaunchContainerEvent %+v\n", event)
+	fmt.Printf("Got DeploymentEvent %+v\n", deploymentEvent)
 
-	err := DestroyContainer(event.Ptr.(RelaunchContainerEvent).Name, docker)
+	e := deploymentEvent.Ptr.(DeploymentEvent)
 
-	if err != nil {
-		fmt.Printf("Error on RelaunchContainerEvent: %+v\n", err)
+	switch e.Action {
+	case "RelaunchContainer":
+		err := DestroyContainer(e.Service, docker)
+
+		if err != nil {
+			fmt.Printf("Error on RelaunchContainerEvent: %+v\n", err)
+		}
+		break
 	}
 
 }

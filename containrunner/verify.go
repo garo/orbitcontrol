@@ -112,8 +112,8 @@ func (c *Containrunner) VerifyAgainstConfiguration(localoc *OrbitConfiguration) 
 
 			bytes, err := json.Marshal(serviceConfig)
 			if res.Node.Value != string(bytes) {
-				//fmt.Printf("marshalled config: %s\n", bytes)
-				//fmt.Printf("res.Node   config: %s\n", res.Node.Value)
+				fmt.Printf("marshalled config: %s\n", bytes)
+				fmt.Printf("res.Node   config: %s\n", res.Node.Value)
 				return &InvalidEtcdConfigFileError{"invalid content: " + path}
 			}
 			//c.Assert(res.Node.Value, Equals, `HTTP/1.0 500 Service Unavailable

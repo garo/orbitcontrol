@@ -15,7 +15,7 @@ var _ = Suite(&EventsSuite{})
 func (s *EventsSuite) SetUpTest(c *C) {
 	fmt.Printf("Connecting to broker\n")
 
-	err := s.queuer.Init("amqp://guest:guest@localhost:5672/")
+	err := s.queuer.Init("amqp://guest:guest@localhost:5672/", "")
 	c.Assert(err, Equals, nil)
 	fmt.Printf("Broker: %+v\n", s.queuer.deploymentEventsQueue)
 
@@ -23,6 +23,7 @@ func (s *EventsSuite) SetUpTest(c *C) {
 
 func (s *EventsSuite) TestPublishAndConsume(c *C) {
 	e := NewOrbitEvent(DeploymentEvent{
+		"action",
 		"service name",
 		"user name",
 		"revision id",

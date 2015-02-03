@@ -106,7 +106,10 @@ func main() {
 			etcd.SetLogger(log.New(os.Stderr, "go-etcd", log.LstdFlags))
 		}
 
-		containrunnerInstance.Init()
+		// dblog is a special case which doesn't want the containrunner to be initiated.
+		if c.Args()[0] != "dblog" {
+			containrunnerInstance.Init()
+		}
 
 		return nil
 	}

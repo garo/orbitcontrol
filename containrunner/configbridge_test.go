@@ -17,8 +17,7 @@ var TestingEtcdEndpoints []string = []string{"http://etcd:4001"}
 
 func (s *ConfigBridgeSuite) SetUpTest(c *C) {
 	s.etcd = etcd.NewClient(TestingEtcdEndpoints)
-	_, err := s.etcd.RawDelete("/test/", true, true)
-	fmt.Printf("******* ConfigBridgeSuite %+v, err: %+v\n", TestingEtcdEndpoints, err)
+	s.etcd.RawDelete("/test/", true, true)
 
 }
 

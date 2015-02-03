@@ -1,0 +1,12 @@
+{
+	"Container" : {
+		"Config": {
+			"Env": [
+				"NODE_ENV=staging"
+			],
+			"Image":"ubuntu",
+			"Hostname": "ubuntu-test"
+		}
+	}
+}
+

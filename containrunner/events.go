@@ -10,8 +10,9 @@ import (
 )
 
 type MessageQueuer interface {
-	Init(amqp_address string) error
+	Init(amqp_address string, listen_queue_name string) error
 	Declare() error
+	ListenDeploymentEventsExchange(queue_name string, receivered_events chan OrbitEvent) error
 	GetReceiveredEventChannel() <-chan OrbitEvent
 	PublishOrbitEvent(event OrbitEvent) error
 }
@@ -23,6 +24,7 @@ type RabbitMQQueuer struct {
 	disconnected          chan *amqp.Error
 	deploymentEventsQueue *amqp.Queue
 	receiveredEvents      chan OrbitEvent
+	listen_queue_name     string
 }
 
 const rabbitmqRetryInterval = 5 * time.Second
@@ -34,11 +36,8 @@ type OrbitEvent struct {
 	Ptr   interface{} `json:"-"`
 }
 
-type RelaunchContainerEvent struct {
-	Name string
-}
-
 type DeploymentEvent struct {
+	Action         string
 	Service        string
 	User           string
 	Revision       string
@@ -67,6 +66,11 @@ func NewOrbitEvent(event interface{}) OrbitEvent {
 	return oe
 }
 
+// Creates OrbitEvent from String. Used to Unmarshal messages from rabbitmq broker
+//
+// The sub type is stored in the OrbitEvent.Type field as string, which should be
+// diretly the name of the event structure. This is used to create the appropriate stucture
+// and its stored in the OrbitEvent.Ptr which accepts any interface{}.
 func NewOrbitEventFromString(str string) (OrbitEvent, error) {
 	var e OrbitEvent
 	err := json.Unmarshal([]byte(str), &e)
@@ -91,27 +95,19 @@ func NewOrbitEventFromString(str string) (OrbitEvent, error) {
 		}
 		e.Ptr = ee
 		break
-	case "RelaunchContainerEvent":
-		var ee RelaunchContainerEvent
-		err := json.Unmarshal(*e.Event, &ee)
-		if err != nil {
-			return e, err
-		}
-		e.Ptr = ee
-		break
-
 	}
 
 	return e, nil
 }
 
-func (d *RabbitMQQueuer) Init(amqp_address string) error {
+func (d *RabbitMQQueuer) Init(amqp_address string, listen_queue_name string) error {
 
 	if d.receiveredEvents == nil {
 		d.receiveredEvents = make(chan OrbitEvent)
 	}
 
 	d.amqp_address = amqp_address
+	d.listen_queue_name = listen_queue_name
 
 	var disconnected chan *amqp.Error
 	connected := make(chan bool)
@@ -125,7 +121,15 @@ func (d *RabbitMQQueuer) Init(amqp_address string) error {
 			case <-connected:
 				fmt.Printf("Connected to rabbitmq broker...\n")
 				// Enable disconnect channel
-				d.Declare()
+				err := d.Declare()
+				if err != nil {
+					fmt.Printf("Error on Declare: %+v\n", err)
+				}
+				err = d.ListenDeploymentEventsExchange(listen_queue_name, d.receiveredEvents)
+				if err != nil {
+					fmt.Printf("Error on ListenDeploymentEventsExchange: %+v\n", err)
+				}
+
 				connected2 <- true
 				disconnected = d.Disconnected()
 			case errd := <-disconnected:
@@ -247,38 +251,54 @@ func (d *RabbitMQQueuer) Declare() error {
 		return err
 	}
 
-	q, err := d.ch.QueueDeclare(
-		"",    // name
-		false, // durable
-		false, // delete when usused
-		true,  // exclusive
-		false, // no-wait
-		nil,   // arguments
-	)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to declare return queue: %+v", err)
-		return err
-	}
-	d.deploymentEventsQueue = &q
+	return nil
+}
 
-	err = d.ch.QueueBind(
-		q.Name, // queue name
-		"#",    // routing key
-		"orbitctl.deployment_events", // exchange
-		false,
-		nil)
+// Starts a listening goroutine on for events coming to orbitctl.deployment_events exchange.
+// The queue is passed in queue_name variable or if its empty an anonymous queue is created.
+//
+func (d *RabbitMQQueuer) ListenDeploymentEventsExchange(queue_name string, receivered_events chan OrbitEvent) error {
+
+	if queue_name == "" {
+
+		queue, err := d.ch.QueueDeclare(
+			"",    // name
+			false, // durable
+			false, // delete when usused
+			true,  // exclusive
+			false, // no-wait
+			nil,   // arguments
+		)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to declare return queue: %+v", err)
+			return err
+		}
+
+		err = d.ch.QueueBind(
+			queue.Name, // queue name
+			"#",        // routing key
+			"orbitctl.deployment_events", // exchange
+			false,
+			nil)
+
+		queue_name = queue.Name
+	}
 
 	msgs, err := d.ch.Consume(
-		q.Name, // queue
-		"",     // consumer
-		true,   // auto ack
-		false,  // exclusive
-		false,  // no local
-		false,  // no wait
-		nil,    // args
+		queue_name, // queue
+		"",         // consumer
+		true,       // auto ack
+		false,      // exclusive
+		false,      // no local
+		false,      // no wait
+		nil,        // args
 	)
-	fmt.Printf("Starting to consume on queue %s\n", q.Name)
-	go d.eventConsumer(d.receiveredEvents, msgs)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Starting to consume on queue %s\n", queue_name)
+	go d.eventConsumer(receivered_events, msgs)
 
 	return nil
 }
@@ -321,7 +341,7 @@ func (d *RabbitMQQueuer) PublishOrbitEvent(oe OrbitEvent) error {
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Got error, reconnecting to rabbitmq broker. err: %+v", err)
-		d.Init(d.amqp_address)
+		d.Init(d.amqp_address, d.listen_queue_name)
 	}
 
 	return err
