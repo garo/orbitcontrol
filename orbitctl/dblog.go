@@ -37,9 +37,9 @@ func init() {
 
 				fmt.Printf("Connecting to AMQP: %s\n", globalConfiguration.AMQPUrl)
 				events := new(containrunner.RabbitMQQueuer)
-				err = events.Init(globalConfiguration.AMQPUrl, "orbitctl.deployment_events_persistent_storage")
+				connected := events.Init(globalConfiguration.AMQPUrl, "orbitctl.deployment_events_persistent_storage")
 
-				if err != nil {
+				if !connected {
 					fmt.Printf("Could not connect to message broker")
 				}
 

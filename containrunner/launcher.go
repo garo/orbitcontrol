@@ -286,8 +286,8 @@ func CleanupOldAuthoritativeImages(authoritative_names []string, preserve_names 
 	}
 
 	// Now iterate thru all interesting images
-	for image, images := range imagesForName {
-		fmt.Printf("Name %s has %d images\n", image, len(images))
+	for _, images := range imagesForName {
+		//fmt.Printf("Name %s has %d images\n", image, len(images))
 
 		// If an image has more than two different revisions/tags then we'll keep the two newest and erase the rest
 		if len(images) > 2 {

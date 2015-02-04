@@ -90,6 +90,11 @@ func main() {
 			Usage:  "Github OAuth2 token for accessing github commit info",
 			EnvVar: "ORBITCTL_GITHUB_TOKEN",
 		},
+		cli.BoolFlag{
+			Name:   "disable-amqp",
+			Usage:  "Disable amqp",
+			EnvVar: "ORBITCTL_DISABLE_AMQP",
+		},
 		etcdBasePathFlag,
 		etcdEndpointFlag,
 	}
@@ -104,6 +109,11 @@ func main() {
 		if c.IsSet("debug") {
 			fmt.Fprintf(os.Stderr, "Turning etcd logging on")
 			etcd.SetLogger(log.New(os.Stderr, "go-etcd", log.LstdFlags))
+		}
+
+		if c.IsSet("disable-amqp") {
+			fmt.Fprintf(os.Stderr, "Disabling AMQP due to --disable-amqp option\n")
+			containrunnerInstance.DisableAMQP = true
 		}
 
 		// dblog is a special case which doesn't want the containrunner to be initiated.

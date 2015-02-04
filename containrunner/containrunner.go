@@ -24,6 +24,7 @@ type Containrunner struct {
 	Events                 MessageQueuer
 	Docker                 *docker.Client
 	incomingLoopbackEvents chan OrbitEvent
+	DisableAMQP            bool
 }
 
 type RuntimeConfiguration struct {
@@ -51,23 +52,24 @@ func (s *Containrunner) Init() {
 	s.incomingLoopbackEvents = make(chan OrbitEvent)
 
 	// Check if the message queue features are enabled on this installation
-	if globalConfiguration.AMQPUrl != "" {
+	if globalConfiguration.AMQPUrl != "" && s.DisableAMQP == false {
 		log.Info("Connecting to AMQP: %s\n", globalConfiguration.AMQPUrl)
 		s.Events = new(RabbitMQQueuer)
 
 		// Start to listen events on an anonymous queue
-		err = s.Events.Init(globalConfiguration.AMQPUrl, "")
-		if err != nil {
-			log.Info(LogString("Error connecting to message broker"))
-		} else {
-			incomingNetworkEvents = s.Events.GetReceiveredEventChannel()
-		}
+		s.Events.Init(globalConfiguration.AMQPUrl, "")
+		incomingNetworkEvents = s.Events.GetReceiveredEventChannel()
 	}
 
 	go EventHandler(s.incomingLoopbackEvents, incomingNetworkEvents)
 
 }
 
+// Handles incoming events and calls appropriate event handlers.
+//
+// There are two different sources for events: Network events and loopback events. The network events
+// are delivered via listening a temporary message broker queue. Loopback events
+// are simply sent from somewhere in the application instance.
 func EventHandler(incomingNetworkEvents <-chan OrbitEvent, incomingLoopbackEvents <-chan OrbitEvent) {
 
 	for {
@@ -142,7 +144,12 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 	quit := false
 	var lastConverge time.Time
 	for !quit {
-		containrunner.incomingLoopbackEvents <- NewOrbitEvent(NoopEvent{"loop iteration"})
+		if containrunner.Events == nil {
+			fmt.Printf("Events is still nil!\n")
+		} else {
+			fmt.Printf("Publishing noop event\n")
+			containrunner.Events.PublishOrbitEvent(NewOrbitEvent(NoopEvent{"loop iteration"}))
+		}
 		select {
 		case val := <-exitChannel:
 			if val == true {

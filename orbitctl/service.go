@@ -144,11 +144,8 @@ func init() {
 							os.Exit(retval)
 						}
 
-						retval = setServiceRevision(name, revision, machineAddress, serviceConfiguration, githubClient)
-						if retval != 0 {
-							os.Exit(retval)
-						}
 						deploymentEvent := containrunner.DeploymentEvent{}
+						deploymentEvent.Action = "SetRevision"
 						deploymentEvent.Service = name
 						deploymentEvent.Revision = revision
 						deploymentEvent.MachineAddress = machineAddress
@@ -157,6 +154,16 @@ func init() {
 							deploymentEvent.User = user.Username
 						}
 						event := containrunner.NewOrbitEvent(deploymentEvent)
+						if containrunnerInstance.Events != nil {
+							containrunnerInstance.Events.PublishOrbitEvent(event)
+						}
+
+						retval = setServiceRevision(name, revision, machineAddress, serviceConfiguration, githubClient)
+						if retval != 0 {
+							os.Exit(retval)
+						}
+						deploymentEvent.Action = "DeployCompleted"
+						event = containrunner.NewOrbitEvent(deploymentEvent)
 						if containrunnerInstance.Events != nil {
 							containrunnerInstance.Events.PublishOrbitEvent(event)
 						} else {
