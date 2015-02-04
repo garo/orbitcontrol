@@ -38,6 +38,7 @@ type RuntimeConfiguration struct {
 }
 
 func (s *Containrunner) Init() {
+
 	etcdClient := GetEtcdClient(s.EtcdEndpoints)
 
 	globalConfiguration, err := s.GetGlobalOrbitProperties(etcdClient)
@@ -46,14 +47,14 @@ func (s *Containrunner) Init() {
 		return
 	}
 
-	fmt.Printf("Containrunner.Init called. etcd endpoints: %+v, Global configuration: %+v\n", s.EtcdEndpoints, globalConfiguration)
+	log.Debug("Containrunner.Init called. etcd endpoints: %+v, Global configuration: %+v\n", s.EtcdEndpoints, globalConfiguration)
 
 	var incomingNetworkEvents <-chan OrbitEvent
 	s.incomingLoopbackEvents = make(chan OrbitEvent)
 
 	// Check if the message queue features are enabled on this installation
 	if globalConfiguration.AMQPUrl != "" && s.DisableAMQP == false {
-		log.Info("Connecting to AMQP: %s\n", globalConfiguration.AMQPUrl)
+		log.Debug("Connecting to AMQP: %s\n", globalConfiguration.AMQPUrl)
 		s.Events = new(RabbitMQQueuer)
 
 		// Start to listen events on an anonymous queue
@@ -95,7 +96,7 @@ func EventHandler(incomingNetworkEvents <-chan OrbitEvent, incomingLoopbackEvent
 
 		switch receiveredEvent.Type {
 		case "NoopEvent":
-			fmt.Printf("Got NoopEvent %+v\n", receiveredEvent)
+			log.Debug("Got NoopEvent %+v\n", receiveredEvent)
 			break
 		case "DeploymentEvent":
 			go HandleDeploymentEvent(receiveredEvent)
@@ -106,7 +107,7 @@ func EventHandler(incomingNetworkEvents <-chan OrbitEvent, incomingLoopbackEvent
 
 func HandleDeploymentEvent(deploymentEvent OrbitEvent) {
 	docker := GetDockerClient()
-	fmt.Printf("Got DeploymentEvent %+v\n", deploymentEvent)
+	log.Debug("Got DeploymentEvent %+v\n", deploymentEvent)
 
 	e := deploymentEvent.Ptr.(DeploymentEvent)
 
@@ -115,7 +116,7 @@ func HandleDeploymentEvent(deploymentEvent OrbitEvent) {
 		err := DestroyContainer(e.Service, docker)
 
 		if err != nil {
-			fmt.Printf("Error on RelaunchContainerEvent: %+v\n", err)
+			log.Error("Error on RelaunchContainerEvent: %+v\n", err)
 		}
 		break
 	}

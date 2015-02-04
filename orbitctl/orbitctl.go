@@ -6,17 +6,19 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"github.com/codegangsta/cli"
 	"github.com/coreos/go-etcd/etcd"
 	"github.com/garo/orbitcontrol/containrunner"
-	"log"
+	"github.com/op/go-logging"
+	stdlog "log"
 	"os"
 	"strings"
 	"text/tabwriter"
 )
 
 var builddate string
+
+var log = logging.MustGetLogger("orbitctl")
 
 const (
 	cliName = "orbitctl"
@@ -106,13 +108,18 @@ func main() {
 
 		globalFlags.Force = c.Bool("force")
 
+		backend := logging.NewLogBackend(os.Stderr, "", stdlog.LstdFlags)
+		backendLeveled := logging.AddModuleLevel(backend)
+		backendLeveled.SetLevel(logging.INFO, "")
+		logging.SetBackend(backendLeveled)
+
 		if c.IsSet("debug") {
-			fmt.Fprintf(os.Stderr, "Turning etcd logging on")
-			etcd.SetLogger(log.New(os.Stderr, "go-etcd", log.LstdFlags))
+			backendLeveled.SetLevel(logging.DEBUG, "")
+			etcd.SetLogger(stdlog.New(os.Stderr, "go-etcd ", stdlog.LstdFlags))
 		}
 
 		if c.IsSet("disable-amqp") {
-			fmt.Fprintf(os.Stderr, "Disabling AMQP due to --disable-amqp option\n")
+			log.Info("Disabling AMQP due to --disable-amqp option")
 			containrunnerInstance.DisableAMQP = true
 		}
 

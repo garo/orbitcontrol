@@ -215,7 +215,7 @@ func getServiceInfo(name string, githubClient *github.Client) (exit int, service
 
 	serviceConfiguration, err := containrunnerInstance.GetServiceByName(name, nil, "")
 	if err != nil {
-		panic(err)
+		log.Fatalf("Service %s not found", name)
 	}
 
 	var commit *github.RepositoryCommit

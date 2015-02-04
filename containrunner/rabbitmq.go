@@ -78,20 +78,19 @@ func (d *RabbitMQQueuer) Init(amqp_address string, listen_queue_name string) boo
 				err := d.connect(d.amqp_address, done)
 				if err != nil {
 					d.State = AMQPTryingAgain
-					fmt.Printf("Connection refused. Trying again in 5 seconds...\n")
+					fmt.Fprintf(os.Stderr, "Connection refused. Trying again in 5 seconds...\n")
 					time.Sleep(5 * time.Second)
 				} else {
 					d.State = AMQPFinalizingConnection
-					fmt.Printf("Connected to rabbitmq broker...\n")
 					// Enable disconnect channel
 					err := d.Declare()
 					if err != nil {
-						fmt.Printf("Error on Declare: %+v\n", err)
+						fmt.Fprintf(os.Stderr, "Error on Declare: %+v\n", err)
 						continue
 					}
 					err = d.ListenDeploymentEventsExchange(listen_queue_name, d.receiveredEvents)
 					if err != nil {
-						fmt.Printf("Error on ListenDeploymentEventsExchange: %+v\n", err)
+						fmt.Fprintf(os.Stderr, "Error on ListenDeploymentEventsExchange: %+v\n", err)
 						continue
 					}
 
@@ -106,10 +105,9 @@ func (d *RabbitMQQueuer) Init(amqp_address string, listen_queue_name string) boo
 				}
 			}
 
-			fmt.Printf("Connection loop will now wait for a disconnect...\n")
 			err := <-d.disconnected
 			d.State = AMQPDisconnected
-			fmt.Printf("AMQP got disconnected. trying again in a second. error: %+v\n", err)
+			fmt.Fprintf(os.Stderr, "AMQP got disconnected. trying again in a second. error: %+v\n", err)
 			d.ch = nil
 			time.Sleep(1 * time.Second)
 		}
@@ -126,14 +124,14 @@ func (d *RabbitMQQueuer) Init(amqp_address string, listen_queue_name string) boo
 func (d *RabbitMQQueuer) connect(uri string, done chan bool) error {
 	var err error
 
-	fmt.Printf("dialing %q\n", uri)
+	//fmt.Printf("dialing %q\n", uri)
 	d.conn, err = amqp.Dial(uri)
 	if err != nil {
-		fmt.Printf("Dial: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Dial: %s (uri was %s)\n", err, uri)
 		return err
 	}
 
-	fmt.Printf("Connection established, getting Channel\n")
+	//fmt.Printf("Connection established, getting Channel\n")
 	d.ch, err = d.conn.Channel()
 	if err != nil {
 		fmt.Printf("Channel: %s", err)
@@ -242,7 +240,7 @@ func (d *RabbitMQQueuer) ListenDeploymentEventsExchange(queue_name string, recei
 		return err
 	}
 
-	fmt.Printf("Starting to consume on queue %s\n", queue_name)
+	//fmt.Printf("Starting to consume on queue %s\n", queue_name)
 	go d.eventConsumer(receivered_events, msgs)
 
 	return nil
