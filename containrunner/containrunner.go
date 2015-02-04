@@ -144,12 +144,6 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 	quit := false
 	var lastConverge time.Time
 	for !quit {
-		if containrunner.Events == nil {
-			fmt.Printf("Events is still nil!\n")
-		} else {
-			fmt.Printf("Publishing noop event\n")
-			containrunner.Events.PublishOrbitEvent(NewOrbitEvent(NoopEvent{"loop iteration"}))
-		}
 		select {
 		case val := <-exitChannel:
 			if val == true {
