@@ -142,9 +142,8 @@ func (c BoundService) GetConfig() ServiceConfiguration {
 
 func (c *ConfigResultEtcdPublisher) PublishServiceState(serviceName string, endpoint string, ok bool, info *EndpointInfo) {
 	if c.etcd == nil {
-		fmt.Fprintf(os.Stderr, "Creating new Etcd client (%+v) so that we can report that service %s at %s is %+v using ttl %d\n", c.EtcdEndpoints, serviceName, endpoint, ok, c.ttl)
+		log.Debug("Creating new Etcd client (%+v) so that we can report that service %s at %s is %+v using ttl %d\n", c.EtcdEndpoints, serviceName, endpoint, ok, c.ttl)
 		c.etcd = GetEtcdClient(c.EtcdEndpoints)
-		fmt.Fprintf(os.Stderr, "Client created\n")
 
 	}
 

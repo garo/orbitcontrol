@@ -75,6 +75,7 @@ func init() {
 				deploymentEvent := containrunner.DeploymentEvent{}
 				deploymentEvent.Action = "RelaunchContainer"
 				deploymentEvent.Service = c.App.Name
+				deploymentEvent.Jitter = 30
 				event := containrunner.NewOrbitEvent(deploymentEvent)
 				if containrunnerInstance.Events != nil {
 					containrunnerInstance.Events.PublishOrbitEvent(event)

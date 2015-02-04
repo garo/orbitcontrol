@@ -83,6 +83,11 @@ func main() {
 			EnvVar: "ORBITCTL_DEBUG",
 		},
 		cli.BoolFlag{
+			Name:   "debug-etcd",
+			Usage:  "Print out more debug information to stderr on etcd",
+			EnvVar: "ORBITCTL_DEBUG_ETCD",
+		},
+		cli.BoolFlag{
 			Name:   "force",
 			Usage:  "Force, don't ask questions",
 			EnvVar: "ORBITCTL_FORCE",
@@ -115,6 +120,9 @@ func main() {
 
 		if c.IsSet("debug") {
 			backendLeveled.SetLevel(logging.DEBUG, "")
+		}
+
+		if c.IsSet("debug-etcd") {
 			etcd.SetLogger(stdlog.New(os.Stderr, "go-etcd ", stdlog.LstdFlags))
 		}
 

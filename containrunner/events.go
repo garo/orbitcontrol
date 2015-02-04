@@ -27,10 +27,20 @@ type DeploymentEvent struct {
 	User           string
 	Revision       string
 	MachineAddress string
+	Jitter         int
 }
 
 type NoopEvent struct {
 	Data string
+}
+
+type ServiceStateEvent struct {
+	Service        string
+	Endpoint       string
+	IsUp           bool
+	StateChanged   bool
+	SameStateSince time.Time
+	EndpointInfo   *EndpointInfo
 }
 
 func (e *OrbitEvent) String() string {
@@ -74,6 +84,14 @@ func NewOrbitEventFromString(str string) (OrbitEvent, error) {
 		break
 	case "DeploymentEvent":
 		var ee DeploymentEvent
+		err := json.Unmarshal(*e.Event, &ee)
+		if err != nil {
+			return e, err
+		}
+		e.Ptr = ee
+		break
+	case "ServiceStateEvent":
+		var ee ServiceStateEvent
 		err := json.Unmarshal(*e.Event, &ee)
 		if err != nil {
 			return e, err

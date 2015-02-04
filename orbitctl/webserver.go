@@ -18,7 +18,11 @@ func init() {
 				webserver.Containrunner = &containrunnerInstance
 				webserver.Start()
 
-				time.Sleep(9223372036854775807) // Not my proudest moment
+				for {
+					webserver.Keepalive()
+					time.Sleep(time.Second)
+				}
+
 			},
 		})
 }

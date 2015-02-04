@@ -99,26 +99,57 @@ func EventHandler(incomingNetworkEvents <-chan OrbitEvent, incomingLoopbackEvent
 			log.Debug("Got NoopEvent %+v\n", receiveredEvent)
 			break
 		case "DeploymentEvent":
-			go HandleDeploymentEvent(receiveredEvent)
+			go HandleDeploymentEvent(receiveredEvent.Ptr.(DeploymentEvent))
+			break
+		case "ServiceStateEvent":
+			go HandleServiceStateEvent(receiveredEvent.Ptr.(ServiceStateEvent))
 			break
 		}
 	}
 }
 
-func HandleDeploymentEvent(deploymentEvent OrbitEvent) {
-	docker := GetDockerClient()
-	log.Debug("Got DeploymentEvent %+v\n", deploymentEvent)
-
-	e := deploymentEvent.Ptr.(DeploymentEvent)
+func HandleDeploymentEvent(e DeploymentEvent) {
+	log.Debug("Got DeploymentEvent %+v\n", e)
 
 	switch e.Action {
 	case "RelaunchContainer":
-		err := DestroyContainer(e.Service, docker)
+		go func() {
+			if e.Jitter > 0 {
+				d := rand.Intn(e.Jitter) + 1
+				log.Debug("Sleeping %d seconds before destroying old container", d)
+				time.Sleep(time.Second * time.Duration(d))
+			}
+			docker := GetDockerClient()
+			err := DestroyContainer(e.Service, docker)
+			if err != nil {
+				log.Error("Error on RelaunchContainerEvent: %+v\n", err)
+			} else {
+				log.Debug("Container %s destroyed", e.Service)
+			}
 
-		if err != nil {
-			log.Error("Error on RelaunchContainerEvent: %+v\n", err)
-		}
+		}()
+
 		break
+	}
+
+}
+
+var configResultPublisher ConfigResultPublisher
+
+func HandleServiceStateEvent(e ServiceStateEvent) {
+	//log.Debug("ServiceStateEvent %+v", e)
+
+	if configResultPublisher != nil {
+
+		// The etcd result publisher only wants to know when services are up.
+		// the TTL feature will automatically kill services which aren't constantly refreshed as
+		// being up
+		if e.IsUp {
+			configResultPublisher.PublishServiceState(e.Service, e.Endpoint, e.IsUp, e.EndpointInfo)
+		}
+
+	} else {
+		log.Error("Tried to use nil configResultPublisher!")
 	}
 
 }
@@ -130,7 +161,8 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 	etcdClient := GetEtcdClient(containrunner.EtcdEndpoints)
 	docker := GetDockerClient()
 	var checkEngine CheckEngine
-	checkEngine.Start(4, &ConfigResultEtcdPublisher{10, containrunner.EtcdBasePath, containrunner.EtcdEndpoints, nil}, containrunner.MachineAddress, containrunner.CheckIntervalInMs)
+	configResultPublisher = &ConfigResultEtcdPublisher{10, containrunner.EtcdBasePath, containrunner.EtcdEndpoints, nil}
+	checkEngine.Start(4, containrunner.incomingLoopbackEvents, containrunner.MachineAddress, containrunner.CheckIntervalInMs)
 
 	var currentConfiguration RuntimeConfiguration
 	var newConfiguration RuntimeConfiguration
@@ -138,7 +170,7 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 
 	var webserver Webserver
 	webserver.Containrunner = &containrunner
-	webserver.Start()
+	//webserver.Start()
 
 	somethingChanged := false
 

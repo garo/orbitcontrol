@@ -1,7 +1,6 @@
 package containrunner
 
 import (
-	"fmt"
 	. "gopkg.in/check.v1"
 	"time"
 )

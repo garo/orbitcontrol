@@ -64,6 +64,7 @@ func (s *DbLogSuite) TestCanStoreDeploymentEventToDatabase(c *C) {
 			"user name",
 			"revision id",
 			"machine address",
+			10,
 		}
 
 		stored_id, err := s.dbLog.StoreDeploymentEvent(e, time.Now())

@@ -3,7 +3,6 @@ package containrunner
 import (
 	"fmt"
 	. "gopkg.in/check.v1"
-	"time"
 )
 
 type RabbitMQSuite struct {
@@ -15,8 +14,8 @@ var _ = Suite(&RabbitMQSuite{})
 func (s *RabbitMQSuite) SetUpTest(c *C) {
 	fmt.Printf("Connecting to broker\n")
 
-	err := s.queuer.Init("amqp://guest:guest@localhost:5672/", "")
-	c.Assert(err, Equals, nil)
+	connected := s.queuer.Init("amqp://guest:guest@localhost:5672/", "")
+	c.Assert(connected, Equals, true)
 	fmt.Printf("Broker: %+v\n", s.queuer.deploymentEventsQueue)
 
 }
@@ -28,6 +27,7 @@ func (s *RabbitMQSuite) TestPublishAndConsume(c *C) {
 		"user name",
 		"revision id",
 		"machine address",
+		10,
 	})
 
 	fmt.Printf("Publishing to mq\n")

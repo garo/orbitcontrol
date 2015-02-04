@@ -1,0 +1,34 @@
+{
+	"Name": "ubuntu",
+	"EndpointPort":3500,
+	"Container" : {
+		"HostConfig" : {
+			"Binds": [
+				"/tmp:/data"
+			],
+			"NetworkMode" : "host"				
+		},
+		"Config": {
+			"Env": [
+				"NODE_ENV=vagrant"
+			],
+			"AttachStderr": false,
+			"AttachStdin": false,
+			"AttachStdout": false,
+			"OpenStdin": false,
+			"Image": "ubuntu"
+		}
+	},
+	"checks" : [
+		{
+			"type" : "http",
+			"url" : "http://127.0.0.1:3500/check"
+		}
+	],
+	"SourceControl":{
+		"Origin":"github.com/Applifier/ubuntu",
+		"OAuth":""
+	},
+	"Attributes":{}
+}
+

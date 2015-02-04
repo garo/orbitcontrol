@@ -1,0 +1,31 @@
+{
+	"Name": "orbitctlweb",
+	"EndpointPort":1500,
+	"Container" : {
+		"HostConfig" : {
+			"Binds": [
+				"/tmp:/data"
+			],
+			"NetworkMode" : "host"				
+		},
+		"Config": {
+			"Env": [
+				"NODE_ENV=vagrant"
+			],
+			"AttachStderr": false,
+			"AttachStdin": false,
+			"AttachStdout": false,
+			"OpenStdin": false,
+			"Image": "orbitctl:latest",
+			"Cmd" : ["webserver"]
+		}
+	},
+	"checks" : [
+		{
+			"type" : "http",
+			"url" : "http://127.0.0.1:1500/check"
+		}
+	],
+	"Attributes":{}
+}
+

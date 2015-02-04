@@ -1,0 +1,24 @@
+{
+	"Name": "test",
+	"EndpointPort":3501,
+	"Container" : {
+		"HostConfig" : {
+			"Binds": [
+				"/tmp:/data"
+			],
+			"NetworkMode" : "host"				
+		},
+		"Config": {
+			"Env": [
+				"NODE_ENV=vagrant"
+			],
+			"AttachStderr": false,
+			"AttachStdin": false,
+			"AttachStdout": false,
+			"OpenStdin": false,
+			"Image": "test"
+		}
+	},
+	"Attributes":{}
+}
+

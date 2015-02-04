@@ -27,6 +27,7 @@ type CheckResult struct {
 	ServiceName  string
 	Endpoint     string
 	Ok           bool
+	Changed      bool
 	EndpointInfo *EndpointInfo
 }
 
@@ -45,14 +46,19 @@ type CheckEngine struct {
 	endpointAddress string
 }
 
-func (ce *CheckEngine) Start(workers int, configResultPublisher ConfigResultPublisher, endpointAddress string, intervalInMs int) {
-	ce.results = make(chan CheckResult, 100)
+type ServiceState int
+
+const (
+	SSUnknown ServiceState = iota
+	SSUp
+	SSDown
+)
+
+func (ce *CheckEngine) Start(workers int, results chan<- OrbitEvent, endpointAddress string, intervalInMs int) {
 	ce.configurations = make(chan MachineConfiguration, 1)
 	ce.endpointAddress = endpointAddress
 
-	go CheckConfigUpdateWorker(ce.configurations, ce.results, endpointAddress, 1000)
-	go PublishCheckResultWorker(ce.results, configResultPublisher)
-
+	go CheckConfigUpdateWorker(ce.configurations, results, endpointAddress, 1000)
 }
 
 func (ce *CheckEngine) Stop() {
@@ -65,7 +71,7 @@ func (ce *CheckEngine) PushNewConfiguration(configuration MachineConfiguration) 
 	ce.configurations <- configuration
 }
 
-func CheckConfigUpdateWorker(configurations <-chan MachineConfiguration, results chan<- CheckResult, endpointAddress string, delay int) {
+func CheckConfigUpdateWorker(configurations <-chan MachineConfiguration, results chan<- OrbitEvent, endpointAddress string, delay int) {
 
 	serviceCheckWorkerChannels := make(map[string]chan ServiceChecks)
 
@@ -132,17 +138,12 @@ func GetEndpointForContainer(service ServiceConfiguration) string {
 	return "the-endpoint"
 }
 
-func PublishCheckResultWorker(results chan CheckResult, configResultPublisher ConfigResultPublisher) {
-	for result := range results {
-		//fmt.Printf("PublishCheckResultWorker %s %s\n", result.ServiceName, result.Ok)
-		configResultPublisher.PublishServiceState(result.ServiceName, result.Endpoint, result.Ok, result.EndpointInfo)
-	}
-}
-
-func CheckServiceWorker(serviceChecksChannel <-chan ServiceChecks, results chan<- CheckResult, endpointAddress string, delay int) {
+func CheckServiceWorker(serviceChecksChannel <-chan ServiceChecks, results chan<- OrbitEvent, endpointAddress string, delay int) {
 
 	var serviceChecks ServiceChecks
 
+	var state ServiceState = SSUnknown
+	var sameStateSince time.Time
 	alive := true
 	for alive {
 		select {
@@ -150,19 +151,20 @@ func CheckServiceWorker(serviceChecksChannel <-chan ServiceChecks, results chan<
 			serviceChecks = newServiceChecks
 
 			if !alive {
-				fmt.Printf("Stopping CheckServiceWorker for service %s\n", serviceChecks.ServiceName)
+				log.Debug("Stopping CheckServiceWorker for service %s\n", serviceChecks.ServiceName)
 				return
 			} else {
-				fmt.Printf("New check configuration for service %s\n", serviceChecks.ServiceName)
+				log.Debug("New check configuration for service %s\n", serviceChecks.ServiceName)
 			}
 
 		default:
 			//fmt.Printf("Checking if service %s is up\n", serviceChecks.ServiceName)
-			var result CheckResult
-			result.ServiceName = serviceChecks.ServiceName
+
+			var result ServiceStateEvent
+			result.Service = serviceChecks.ServiceName
 			result.Endpoint = fmt.Sprintf("%s:%d", endpointAddress, serviceChecks.EndpointPort)
 			result.EndpointInfo = serviceChecks.EndpointInfo
-			result.Ok = true
+			result.IsUp = true
 			ok := true
 			for _, check := range serviceChecks.Checks {
 				if check.Delay > 0 {
@@ -178,13 +180,27 @@ func CheckServiceWorker(serviceChecksChannel <-chan ServiceChecks, results chan<
 					ok = CheckTcpService(check)
 				}
 				if !ok {
-					result.Ok = false
+					result.IsUp = false
 				}
 			}
 
+			var newState ServiceState
 			if ok {
-				results <- result
+				newState = SSUp
+			} else {
+				newState = SSDown
 			}
+
+			if newState != state {
+				result.StateChanged = true
+				sameStateSince = time.Now()
+			} else {
+				result.StateChanged = false
+			}
+			state = newState
+			result.SameStateSince = sameStateSince
+
+			results <- NewOrbitEvent(result)
 
 		}
 

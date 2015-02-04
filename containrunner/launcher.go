@@ -49,15 +49,28 @@ func FindMatchingContainers(existing_containers []ContainerDetails, required_ser
 
 	for _, container_details := range existing_containers {
 		found := true
+		debugging := false
+
+		if strings.Index(container_details.Command, "orbit") != -1 {
+			debugging = true
+			fmt.Printf("container: %+v\n", container_details)
+		}
 
 		// Support the Revision code path where the revision overrides the image (which contains both container and revision tag)
 		// set in the static Container.Config.Image
+
+		// NOTE: this has bugs if the revision is "latest" on either side
+		//fmt.Printf("image: %s, Config.Image: %s\n", container_details.Container.Config.Image, required_service.Container.Config.Image)
+
 		if required_service.Revision != nil {
 			m := imageRegexp.FindStringSubmatch(required_service.Container.Config.Image)
 			image := m[1] + ":" + required_service.Revision.Revision
 
 			if container_details.Container.Config.Image != image {
 				remaining_containers = append(remaining_containers, container_details)
+				if debugging {
+					fmt.Printf("continue on image: %s != %s\n", container_details.Container.Config.Image, image)
+				}
 				continue
 			}
 
@@ -131,6 +144,8 @@ func FindMatchingContainers(existing_containers []ContainerDetails, required_ser
 			//fmt.Println("Found matching!", container_details)
 		} else {
 			remaining_containers = append(remaining_containers, container_details)
+			//fmt.Println("did not match!", container_details)
+
 		}
 	}
 
@@ -173,17 +188,17 @@ func ConvergeContainers(conf MachineConfiguration, preDelay bool, client *docker
 		matching_containers, existing_containers = FindMatchingContainers(existing_containers, required_service)
 
 		if len(matching_containers) > 1 {
-			fmt.Println("Weird! Found more than one container matching specs: ", matching_containers)
+			log.Warning("Weird! Found more than one container matching specs: ", matching_containers)
 		}
 
 		if len(matching_containers) == 0 {
-			fmt.Println("No containers found matching ", required_service, ". Marking for launch...")
+			log.Debug("No containers found matching ", required_service, ". Marking for launch...")
 			ready_for_launch = append(ready_for_launch, required_service)
 		}
 
 		if len(matching_containers) == 1 {
 			if !matching_containers[0].Container.State.Running {
-				fmt.Println("Found one matching container and it's not running! Removing it so we can start it again", matching_containers[0])
+				log.Debug("Found one matching container and it's not running! Removing it so we can start it again", matching_containers[0])
 				err = client.RemoveContainer(docker.RemoveContainerOptions{matching_containers[0].Container.ID, true, true})
 				if err != nil {
 					panic(err)
@@ -202,13 +217,13 @@ func ConvergeContainers(conf MachineConfiguration, preDelay bool, client *docker
 
 			for _, authoritative_name := range conf.AuthoritativeNames {
 				if authoritative_name == image {
-					log.Info(LogEvent(ContainerLogEvent{"stop-and-remove", container.Container.Image, container.Container.Name}))
+					//log.Info(LogEvent(ContainerLogEvent{"stop-and-remove", container.Container.Image, container.Container.Name}))
 
-					fmt.Printf("Found container %+v which we are authoritative but its running. Going to stop it...\n", container)
+					log.Debug("Found container %s (%s) which we are authoritative but its running. Going to stop it...\n", container.APIContainers.ID, container.APIContainers.Image)
 					client.StopContainer(container.Container.ID, 10)
 					err = client.RemoveContainer(docker.RemoveContainerOptions{container.Container.ID, true, true})
 					if err != nil {
-						panic(err)
+						log.Panic(err)
 					}
 				}
 			}
@@ -221,11 +236,11 @@ func ConvergeContainers(conf MachineConfiguration, preDelay bool, client *docker
 		preserveImages = append(preserveImages, imageName)
 	}
 
-	fmt.Printf("Preserving images %+v\n", preserveImages)
+	log.Debug("Preserving images %+v\n", preserveImages)
 
 	err = CleanupOldAuthoritativeImages(conf.AuthoritativeNames, preserveImages, client)
 	if err != nil {
-		fmt.Printf("Error on cleaning up old images! %+v\n", err)
+		log.Warning("Error on cleaning up old images! %+v\n", err)
 	}
 
 	var somethingFailed error = nil
@@ -311,7 +326,7 @@ func CleanupOldAuthoritativeImages(authoritative_names []string, preserve_names 
 						createdMap[image.Created] = image
 						keys = append(keys, image.Created)
 					} else {
-						fmt.Printf("Preserving image %+v\n", image)
+						log.Debug("Preserving image %+v\n", image)
 					}
 				}
 			}
@@ -322,10 +337,10 @@ func CleanupOldAuthoritativeImages(authoritative_names []string, preserve_names 
 			// And then we start removing from the oldest and stop so that we leave two newest
 			for i := 0; i < len(keys)-2; i++ {
 				image := createdMap[keys[i]]
-				fmt.Printf("Removing image %s (tags %+v) at timestamp %d\n", image.ID, image.RepoTags, keys[i])
+				log.Debug("Removing image %s (tags %+v) at timestamp %d\n", image.ID, image.RepoTags, keys[i])
 				err = client.RemoveImage(image.ID)
 				if err != nil {
-					fmt.Printf("Could not remove old image %+v, reason: %+v", image.ID, err)
+					log.Warning("Could not remove old image %+v, reason: %+v", image.ID, err)
 				}
 			}
 		}
@@ -335,22 +350,30 @@ func CleanupOldAuthoritativeImages(authoritative_names []string, preserve_names 
 }
 
 func GetContainerImageNameWithRevision(serviceConfiguration ServiceConfiguration, revision string) string {
-	var imageRegexp = regexp.MustCompile("^(.+/.+):(.+?)$")
+	var imageRegexp = regexp.MustCompile("^(.+/.+?)(?::(.+?))?$")
 
 	if revision == "" && serviceConfiguration.Revision != nil && serviceConfiguration.Revision.Revision != "" {
 		revision = serviceConfiguration.Revision.Revision
 	}
 
 	m := imageRegexp.FindStringSubmatch(serviceConfiguration.Container.Config.Image)
+	fmt.Printf("haystack: %s, m: %+v\n", serviceConfiguration.Container.Config.Image, m)
 	if len(m) == 0 {
 		if revision != "" {
 			return serviceConfiguration.Container.Config.Image + ":" + revision
 		} else {
-			return serviceConfiguration.Container.Config.Image + ":latest"
+			if strings.Index(serviceConfiguration.Container.Config.Image, ":") != -1 {
+				return serviceConfiguration.Container.Config.Image
+			} else {
+				return serviceConfiguration.Container.Config.Image + ":latest"
+			}
 		}
 	} else {
 		if revision != "" {
+			fmt.Printf("here1\n")
 			return m[1] + ":" + revision
+		} else if m[2] == "" {
+			return serviceConfiguration.Container.Config.Image + ":latest"
 		} else {
 			return serviceConfiguration.Container.Config.Image
 		}
@@ -366,7 +389,7 @@ func (c *ServiceConfiguration) GetRevision() string {
 	} else {
 		m := imageRegexp.FindStringSubmatch(c.Container.Config.Image)
 		if len(m) < 2 {
-			fmt.Printf("Error getting revision for %s\n", c.Container.Config.Image)
+			log.Error("Error getting revision for %s\n", c.Container.Config.Image)
 			return ""
 		}
 		return m[2]
@@ -441,7 +464,7 @@ func LaunchContainer(name string, imageName string, container *ContainerConfigur
 				fmt.Printf("Sleeping %d seconds before pulling image %s\n", delay, imageName)
 				time.Sleep(time.Second * time.Duration(delay))
 			}
-			log.Info(LogEvent(ContainerLogEvent{"pulling", imageName, ""}))
+			//log.Info(LogEvent(ContainerLogEvent{"pulling", imageName, ""}))
 			var pullImageOptions docker.PullImageOptions
 			if strings.Index(imageName, "/") == -1 {
 				pullImageOptions.Repository = imageName
@@ -479,8 +502,8 @@ func LaunchContainer(name string, imageName string, container *ContainerConfigur
 
 	DestroyContainer(name, client)
 
-	fmt.Println("Creating container", options)
-	log.Info(LogEvent(ContainerLogEvent{"create-and-launch", imageName, name}))
+	log.Notice("Creating container %s", options.Name)
+	//log.Info(LogEvent(ContainerLogEvent{"create-and-launch", imageName, name}))
 	new_container, err := client.CreateContainer(options)
 	if err != nil {
 		panic(err)
@@ -517,14 +540,14 @@ func DestroyContainer(name string, client *docker.Client) error {
 		}
 
 		if container.Container.Name == name {
-			fmt.Printf("Stopping container %+v\n", container_info)
+			log.Notice("Stopping container %+v", container_info)
 			err = client.StopContainer(container.ID, 10)
 			if err != nil {
-				fmt.Printf("Could not stop container: %+v. Err: %+v\n", container_info, err)
+				log.Warning("Could not stop container: %+v. Err: %+v\n", container_info, err)
 			}
 			err = client.RemoveContainer(docker.RemoveContainerOptions{container.ID, true, true})
 			if err != nil {
-				fmt.Printf("Could not remove container: %+v. Err: %+v\n", container_info, err)
+				log.Warning("Could not remove container: %+v. Err: %+v\n", container_info, err)
 			}
 			break
 		}

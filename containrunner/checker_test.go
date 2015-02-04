@@ -29,16 +29,16 @@ func (s *CheckerSuite) TestDummyService(c *C) {
 
 func (s *CheckerSuite) TestCheckServiceWorker(c *C) {
 	serviceChecksChannel := make(chan ServiceChecks)
-	results := make(chan CheckResult, 10)
+	results := make(chan OrbitEvent, 10)
 
 	serviceChecks := ServiceChecks{}
 	serviceChecks.Checks = []ServiceCheck{{Type: "dummy", DummyResult: true}}
 
 	go CheckServiceWorker(serviceChecksChannel, results, "10.0.0.1", 10)
 	serviceChecksChannel <- serviceChecks
-	result := <-results
+	result := (<-results).Ptr.(ServiceStateEvent)
 
-	c.Assert(result.Ok, Equals, true)
+	c.Assert(result.IsUp, Equals, true)
 }
 
 func (s *CheckerSuite) TestTCPService(c *C) {
@@ -116,22 +116,10 @@ func (c TestConfigResultPublisher) PublishServiceState(serviceName string, endpo
 	}
 }
 
-func (s *CheckerSuite) TestPublishCheckResultWorker(c *C) {
-
-	results := make(chan CheckResult)
-
-	var rp TestConfigResultPublisher
-
-	go PublishCheckResultWorker(results, rp)
-	results <- CheckResult{"okService", "da-endpoint", true, nil}
-	close(results)
-
-}
-
 func (s *CheckerSuite) TestCheckConfigUpdateWorker(c *C) {
 
 	configurations := make(chan MachineConfiguration)
-	resultsChannel := make(chan CheckResult, 1)
+	resultsChannel := make(chan OrbitEvent, 1)
 
 	var mc MachineConfiguration
 	mc.Services = make(map[string]BoundService)
@@ -153,18 +141,18 @@ func (s *CheckerSuite) TestCheckConfigUpdateWorker(c *C) {
 
 	go CheckConfigUpdateWorker(configurations, resultsChannel, "10.0.0.1", 10)
 	configurations <- mc
-	result := <-resultsChannel
+	result := (<-resultsChannel).Ptr.(ServiceStateEvent)
 	close(configurations)
 
-	c.Assert(result.ServiceName, Equals, "myService")
-	c.Assert(result.Ok, Equals, true)
+	c.Assert(result.Service, Equals, "myService")
+	c.Assert(result.IsUp, Equals, true)
 }
 
 func (s *CheckerSuite) TestCheckConfigUpdateWorkerWhenServiceIsRemoved(c *C) {
 	fmt.Println("********* TestCheckConfigUpdateWorkerWhenServiceIsRemoved start ")
 
 	configurations := make(chan MachineConfiguration, 1)
-	resultsChannel := make(chan CheckResult, 1)
+	resultsChannel := make(chan OrbitEvent, 1)
 
 	var mc MachineConfiguration
 	mc.Services = make(map[string]BoundService)
@@ -193,10 +181,10 @@ func (s *CheckerSuite) TestCheckConfigUpdateWorkerWhenServiceIsRemoved(c *C) {
 	time.Sleep(time.Millisecond * 200)
 	fmt.Println("Closing CheckConfigUpdateWorker from the test")
 	close(configurations)
-	result := <-resultsChannel
+	result := (<-resultsChannel).Ptr.(ServiceStateEvent)
 
-	c.Assert(result.ServiceName, Equals, "myService")
-	c.Assert(result.Ok, Equals, true)
+	c.Assert(result.Service, Equals, "myService")
+	c.Assert(result.IsUp, Equals, true)
 	fmt.Println("********* TestCheckConfigUpdateWorkerWhenServiceIsRemoved end ")
 
 }
