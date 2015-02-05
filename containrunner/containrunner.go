@@ -149,7 +149,7 @@ func (s *Containrunner) HandleServiceStateEvent(e ServiceStateEvent) {
 			configResultPublisher.PublishServiceState(e.Service, e.Endpoint, e.IsUp, e.EndpointInfo)
 		}
 
-		if e.IsUp == false && time.Since(e.SameStateSince) > 20*time.Second {
+		if e.IsUp == false && time.Since(e.SameStateSince) > time.Minute {
 			name := fmt.Sprintf("automatic-relaunch-service-%s", e.Service)
 
 			if !s.CommandController.IsRunning(name) {
@@ -174,7 +174,7 @@ func (s *Containrunner) HandleServiceStateEvent(e ServiceStateEvent) {
 						log.Error("Error destroying container for relaunch: %+v", err)
 					}
 
-					time.Sleep(time.Minute)
+					time.Sleep(2 * time.Minute)
 					log.Debug("Grace period over for service %s relaunch", name)
 					return err
 				}
