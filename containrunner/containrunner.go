@@ -25,6 +25,7 @@ type Containrunner struct {
 	Docker                 *docker.Client
 	incomingLoopbackEvents chan OrbitEvent
 	DisableAMQP            bool
+	CommandController      CommandController
 }
 
 type RuntimeConfiguration struct {
@@ -62,7 +63,7 @@ func (s *Containrunner) Init() {
 		incomingNetworkEvents = s.Events.GetReceiveredEventChannel()
 	}
 
-	go EventHandler(s.incomingLoopbackEvents, incomingNetworkEvents)
+	go s.EventHandler(s.incomingLoopbackEvents, incomingNetworkEvents)
 
 }
 
@@ -71,7 +72,7 @@ func (s *Containrunner) Init() {
 // There are two different sources for events: Network events and loopback events. The network events
 // are delivered via listening a temporary message broker queue. Loopback events
 // are simply sent from somewhere in the application instance.
-func EventHandler(incomingNetworkEvents <-chan OrbitEvent, incomingLoopbackEvents <-chan OrbitEvent) {
+func (s *Containrunner) EventHandler(incomingNetworkEvents <-chan OrbitEvent, incomingLoopbackEvents <-chan OrbitEvent) {
 
 	for {
 		var receiveredEvent OrbitEvent
@@ -99,16 +100,16 @@ func EventHandler(incomingNetworkEvents <-chan OrbitEvent, incomingLoopbackEvent
 			log.Debug("Got NoopEvent %+v\n", receiveredEvent)
 			break
 		case "DeploymentEvent":
-			go HandleDeploymentEvent(receiveredEvent.Ptr.(DeploymentEvent))
+			go s.HandleDeploymentEvent(receiveredEvent.Ptr.(DeploymentEvent))
 			break
 		case "ServiceStateEvent":
-			go HandleServiceStateEvent(receiveredEvent.Ptr.(ServiceStateEvent))
+			go s.HandleServiceStateEvent(receiveredEvent.Ptr.(ServiceStateEvent))
 			break
 		}
 	}
 }
 
-func HandleDeploymentEvent(e DeploymentEvent) {
+func (s *Containrunner) HandleDeploymentEvent(e DeploymentEvent) {
 	log.Debug("Got DeploymentEvent %+v\n", e)
 
 	switch e.Action {
@@ -136,7 +137,7 @@ func HandleDeploymentEvent(e DeploymentEvent) {
 
 var configResultPublisher ConfigResultPublisher
 
-func HandleServiceStateEvent(e ServiceStateEvent) {
+func (s *Containrunner) HandleServiceStateEvent(e ServiceStateEvent) {
 	//log.Debug("ServiceStateEvent %+v", e)
 
 	if configResultPublisher != nil {
@@ -146,6 +147,39 @@ func HandleServiceStateEvent(e ServiceStateEvent) {
 		// being up
 		if e.IsUp {
 			configResultPublisher.PublishServiceState(e.Service, e.Endpoint, e.IsUp, e.EndpointInfo)
+		}
+
+		if e.IsUp == false && time.Since(e.SameStateSince) > 20*time.Second {
+			name := fmt.Sprintf("automatic-relaunch-service-%s", e.Service)
+
+			if !s.CommandController.IsRunning(name) {
+				log.Info("Service %s has been down for too long. Going to proactively relaunch it", e.Service)
+				f := func(arguments interface{}) error {
+					var name string = arguments.(string)
+
+					log.Debug("Automatic relaunch service will now destroy container %s", name)
+
+					deploymentEvent := DeploymentEvent{}
+					deploymentEvent.Action = "AutomaticRelaunch"
+					deploymentEvent.Service = name
+					deploymentEvent.MachineAddress = s.MachineAddress
+					event := NewOrbitEvent(deploymentEvent)
+					if s.Events != nil {
+						s.Events.PublishOrbitEvent(event)
+					}
+
+					docker := GetDockerClient()
+					err := DestroyContainer(e.Service, docker)
+					if err != nil {
+						log.Error("Error destroying container for relaunch: %+v", err)
+					}
+
+					time.Sleep(time.Minute)
+					log.Debug("Grace period over for service %s relaunch", name)
+					return err
+				}
+				s.CommandController.InvokeIfNotAlreadyRunning(name, f, e.Service)
+			}
 		}
 
 	} else {

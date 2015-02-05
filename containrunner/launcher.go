@@ -49,12 +49,6 @@ func FindMatchingContainers(existing_containers []ContainerDetails, required_ser
 
 	for _, container_details := range existing_containers {
 		found := true
-		debugging := false
-
-		if strings.Index(container_details.Command, "orbit") != -1 {
-			debugging = true
-			fmt.Printf("container: %+v\n", container_details)
-		}
 
 		// Support the Revision code path where the revision overrides the image (which contains both container and revision tag)
 		// set in the static Container.Config.Image
@@ -68,9 +62,6 @@ func FindMatchingContainers(existing_containers []ContainerDetails, required_ser
 
 			if container_details.Container.Config.Image != image {
 				remaining_containers = append(remaining_containers, container_details)
-				if debugging {
-					fmt.Printf("continue on image: %s != %s\n", container_details.Container.Config.Image, image)
-				}
 				continue
 			}
 
@@ -357,7 +348,6 @@ func GetContainerImageNameWithRevision(serviceConfiguration ServiceConfiguration
 	}
 
 	m := imageRegexp.FindStringSubmatch(serviceConfiguration.Container.Config.Image)
-	fmt.Printf("haystack: %s, m: %+v\n", serviceConfiguration.Container.Config.Image, m)
 	if len(m) == 0 {
 		if revision != "" {
 			return serviceConfiguration.Container.Config.Image + ":" + revision
@@ -370,7 +360,6 @@ func GetContainerImageNameWithRevision(serviceConfiguration ServiceConfiguration
 		}
 	} else {
 		if revision != "" {
-			fmt.Printf("here1\n")
 			return m[1] + ":" + revision
 		} else if m[2] == "" {
 			return serviceConfiguration.Container.Config.Image + ":latest"

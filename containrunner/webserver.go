@@ -50,10 +50,9 @@ func (ce *Webserver) statusHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (ce *Webserver) Start() error {
-
+func (ce *Webserver) Start(port int) error {
 	ce.server = new(http.Server)
-	ce.server.Addr = ":1500"
+	ce.server.Addr = fmt.Sprintf(":%d", port)
 	mux := http.NewServeMux()
 	ce.server.Handler = mux
 

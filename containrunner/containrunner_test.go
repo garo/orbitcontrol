@@ -16,8 +16,10 @@ func (s *ContainrunnerSuite) SetUpTest(c *C) {
 
 func (s *ContainrunnerSuite) TestEventHandlerWithNoopEvent(c *C) {
 
+	cr := Containrunner{}
+
 	var incomingLoopbackEvents chan OrbitEvent = make(chan OrbitEvent)
-	go EventHandler(nil, incomingLoopbackEvents)
+	go cr.EventHandler(nil, incomingLoopbackEvents)
 
 	incomingLoopbackEvents <- NewOrbitEvent(NoopEvent{"test"})
 

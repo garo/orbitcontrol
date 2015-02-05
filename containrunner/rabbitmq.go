@@ -48,6 +48,7 @@ type RabbitMQQueuer struct {
 	receiveredEvents      chan OrbitEvent
 	listen_queue_name     string
 	State                 AMQPState
+	outgoingEvents        chan OrbitEvent
 }
 
 const rabbitmqRetryInterval = 5 * time.Second
@@ -59,6 +60,10 @@ func (d *RabbitMQQueuer) Init(amqp_address string, listen_queue_name string) boo
 
 	if d.receiveredEvents == nil {
 		d.receiveredEvents = make(chan OrbitEvent)
+	}
+
+	if d.outgoingEvents == nil {
+		d.outgoingEvents = make(chan OrbitEvent)
 	}
 
 	d.amqp_address = amqp_address
@@ -112,6 +117,8 @@ func (d *RabbitMQQueuer) Init(amqp_address string, listen_queue_name string) boo
 			time.Sleep(1 * time.Second)
 		}
 	}()
+
+	go d.outgoingEventDispatcher(d.outgoingEvents)
 
 	select {
 	case <-connected:
@@ -269,25 +276,33 @@ func (d *RabbitMQQueuer) Close() {
 	d.conn = nil
 }
 
+// Publishes OrbitEvent to RabbitMQ. Thread safe function.
 func (d *RabbitMQQueuer) PublishOrbitEvent(oe OrbitEvent) error {
 	if d.State != AMQPConnected {
 		return errors.New(fmt.Sprintf("AMQP not connected (was %s). Dropping message %+v\n", d.State, oe))
 	}
 
-	err := d.ch.Publish(
-		"orbitctl.deployment_events", // exchange
-		oe.Type, // routing key
-		false,   // mandatory
-		false,   // immediate
-		amqp.Publishing{
-			ContentType:  "application/json",
-			Body:         []byte(oe.String()),
-			DeliveryMode: 2,
-		})
+	d.outgoingEvents <- oe
+	return nil
+}
 
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Got error on send: %+v", err)
+// Sends all events to RabbitMQ channel. Used to ensure thread safety. Reads
+// events from the outgoingEvents channel
+func (d *RabbitMQQueuer) outgoingEventDispatcher(outgoingEvents chan OrbitEvent) {
+	for oe := range outgoingEvents {
+		err := d.ch.Publish(
+			"orbitctl.deployment_events", // exchange
+			oe.Type, // routing key
+			false,   // mandatory
+			false,   // immediate
+			amqp.Publishing{
+				ContentType:  "application/json",
+				Body:         []byte(oe.String()),
+				DeliveryMode: 2,
+			})
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Got error on send: %+v", err)
+		}
 	}
-
-	return err
 }

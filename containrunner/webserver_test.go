@@ -18,9 +18,9 @@ func (s *WebserverSuite) SetUpTest(c *C) {
 func (s *WebserverSuite) TestCheckHandler(c *C) {
 
 	server := new(Webserver)
-	err := server.Start()
+	err := server.Start(64123)
 	c.Assert(err, IsNil)
-	resp, err := http.Get("http://localhost:1500/check")
+	resp, err := http.Get("http://localhost:64123/check")
 	c.Assert(err, IsNil)
 	body, err := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
@@ -29,7 +29,7 @@ func (s *WebserverSuite) TestCheckHandler(c *C) {
 
 	server.Keepalive()
 
-	resp, err = http.Get("http://localhost:1500/check")
+	resp, err = http.Get("http://localhost:64123/check")
 	c.Assert(err, IsNil)
 	body, err = ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
