@@ -151,8 +151,16 @@ func (s *Containrunner) HandleServiceStateEvent(e ServiceStateEvent) {
 
 		if e.IsUp == false && time.Since(e.SameStateSince) > time.Minute {
 			name := fmt.Sprintf("automatic-relaunch-service-%s", e.Service)
+			etcdClient := GetEtcdClient(s.EtcdEndpoints)
 
-			if !s.CommandController.IsRunning(name) {
+			serviceConfiguration, err := s.GetServiceByName(e.Service, etcdClient, s.MachineAddress)
+			if err != nil {
+				log.Warning("Error getting service %s configuration", e.Service)
+				return
+			}
+
+			// Only try to relaunch services which has Container configuration and that the restart command is not already running
+			if serviceConfiguration.Container != nil && !s.CommandController.IsRunning(name) {
 				log.Info("Service %s has been down for too long. Going to proactively relaunch it", e.Service)
 				f := func(arguments interface{}) error {
 					var name string = arguments.(string)
