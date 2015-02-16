@@ -251,6 +251,10 @@ func MainExecutionLoop(exitChannel chan bool, containrunner Containrunner) {
 
 			newConfiguration.ServiceBackends, err = containrunner.GetAllServiceEndpoints()
 
+			if err != nil {
+				continue
+			}
+
 			if !DeepEqual(currentConfiguration.MachineConfiguration, newConfiguration.MachineConfiguration) {
 				log.Info(LogString("New Machine Configuration. Pushing changes to check engine"))
 

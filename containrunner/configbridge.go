@@ -834,7 +834,8 @@ func (c Containrunner) GetEndpointsForService(service_name string) (map[string]*
 
 	res, err := etcdClient.Get(c.EtcdBasePath+"/services/"+service_name+"/endpoints", true, true)
 	if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
-		panic(err)
+		log.Error("Could not get service endpoints: %+v", err.Error())
+		return nil, err
 	}
 
 	if err != nil {
