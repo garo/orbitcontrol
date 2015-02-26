@@ -43,6 +43,19 @@ type ServiceStateEvent struct {
 	EndpointInfo   *EndpointInfo
 }
 
+type NewMachineConfigurationEvent struct {
+	MachineConfiguration MachineConfiguration
+}
+
+type NewRuntimeConfigurationEvent struct {
+	NewRuntimeConfiguration RuntimeConfiguration
+	OldRuntimeConfiguration RuntimeConfiguration
+}
+
+type ConvergeContainersEvent struct {
+	MachineConfiguration MachineConfiguration
+}
+
 func (e *OrbitEvent) String() string {
 	bytes, _ := json.Marshal(e.Ptr)
 	rawMsg := json.RawMessage(bytes)

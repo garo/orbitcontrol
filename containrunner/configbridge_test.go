@@ -567,10 +567,7 @@ func (s *ConfigBridgeSuite) TestGetAllEndpoints(c *C) {
 	_, err = s.etcd.Set("/test/services/testService1/endpoints/10.1.2.4:1000", "{\"Revision\":\"kissa\"}", 10)
 	c.Assert(err, IsNil)
 
-	var containrunner Containrunner
-	containrunner.EtcdBasePath = "/test"
-	containrunner.EtcdEndpoints = TestingEtcdEndpoints
-	serviceEndpoints, err := containrunner.GetAllServiceEndpoints()
+	serviceEndpoints, err := GetAllServiceEndpoints(TestingEtcdEndpoints, "/test")
 	c.Assert(err, IsNil)
 
 	c.Assert(serviceEndpoints["testService1"]["10.1.2.4:1000"].Revision, Equals, "kissa")

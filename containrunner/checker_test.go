@@ -176,7 +176,9 @@ func (s *CheckerSuite) TestCheckConfigUpdateWorkerWhenServiceIsRemoved(c *C) {
 	configurations <- mc
 	time.Sleep(time.Millisecond * 150)
 	fmt.Println("Removing service...")
-	delete(mc.Services, "myService")
+
+	mc = MachineConfiguration{}
+	mc.Services = make(map[string]BoundService)
 	configurations <- mc
 	time.Sleep(time.Millisecond * 200)
 	fmt.Println("Closing CheckConfigUpdateWorker from the test")

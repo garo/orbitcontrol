@@ -331,7 +331,7 @@ func CleanupOldAuthoritativeImages(authoritative_names []string, preserve_names 
 				log.Debug("Removing image %s (tags %+v) at timestamp %d\n", image.ID, image.RepoTags, keys[i])
 				err = client.RemoveImage(image.ID)
 				if err != nil {
-					log.Warning("Could not remove old image %+v, reason: %+v", image.ID, err)
+					//log.Warning("Could not remove old image %+v, reason: %+v", image.ID, err)
 				}
 			}
 		}

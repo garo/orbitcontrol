@@ -51,7 +51,7 @@ func (s *CommandSuite) TestInvokeIfNotAlreadyRunning(c *C) {
 
 	cc := CommandController{}
 
-	cont := make(chan error)
+	cont := make(chan error, 10)
 
 	f := func(arguments interface{}) error {
 		return <-cont

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -14,6 +15,7 @@ type Webserver struct {
 	server        *http.Server
 	listener      *net.Listener
 	Containrunner *Containrunner
+	lock          sync.Mutex
 }
 
 type StatusData struct {
@@ -21,12 +23,18 @@ type StatusData struct {
 }
 
 func (ce *Webserver) Keepalive() {
+	ce.lock.Lock()
+	defer ce.lock.Unlock()
 	ce.lastKeepalive = time.Now()
 }
 
 func (ce *Webserver) checkHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Service", "orbit")
-	if time.Since(ce.lastKeepalive) < time.Minute {
+	ce.lock.Lock()
+	lastKeepalive := ce.lastKeepalive
+	ce.lock.Unlock()
+
+	if time.Since(lastKeepalive) < time.Minute {
 		fmt.Fprintf(w, "OK\n")
 	} else {
 		http.Error(w, "Keepalive timeout", 500)

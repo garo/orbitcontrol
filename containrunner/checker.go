@@ -58,6 +58,7 @@ func (ce *CheckEngine) Start(workers int, results chan<- OrbitEvent, endpointAdd
 	ce.configurations = make(chan MachineConfiguration, 1)
 	ce.endpointAddress = endpointAddress
 
+	log.Info("CheckEngine Start. configurations chan: %+v", ce.configurations)
 	go CheckConfigUpdateWorker(ce.configurations, results, endpointAddress, 1000)
 }
 
@@ -72,18 +73,19 @@ func (ce *CheckEngine) PushNewConfiguration(configuration MachineConfiguration) 
 }
 
 func CheckConfigUpdateWorker(configurations <-chan MachineConfiguration, results chan<- OrbitEvent, endpointAddress string, delay int) {
+	log.Info("CheckConfigUpdateWorker starting")
 
 	serviceCheckWorkerChannels := make(map[string]chan ServiceChecks)
 
 	var configuration MachineConfiguration
 	for {
-		//fmt.Printf("pretick on %s\n", endpointAddress)
+		//fmt.Printf("pretick on %s, %+v\n", endpointAddress, configurations)
 		newConf, alive := <-configurations
 		//fmt.Printf("tick. Alive: %d, endpoint: %s\n", alive, endpointAddress)
 		//select {
 		//case newConf, alive := <-configurations:
 		if alive {
-			fmt.Printf("Got new configuration: %+v\n", newConf)
+			//fmt.Printf("Got new configuration: %+v\n", newConf)
 
 			configuration = newConf
 

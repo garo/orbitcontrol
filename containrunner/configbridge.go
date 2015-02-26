@@ -180,6 +180,48 @@ func (c *ConfigResultEtcdPublisher) PublishServiceState(serviceName string, endp
 	}
 }
 
+// Polls for configuration updates and triggers a NewRuntimeConfigurationEvent.
+func (s *Containrunner) PollConfigurationUpdate() {
+	etcdClient := GetEtcdClient(s.EtcdEndpoints)
+
+	var err error
+
+	// Handle new MachineConfiguration
+	s.newConfiguration.MachineConfiguration, err = s.GetMachineConfigurationByTags(etcdClient, s.Tags, s.MachineAddress)
+	if err != nil {
+		if strings.HasPrefix(err.Error(), "100:") {
+			log.Info(LogString("Error:" + err.Error()))
+		} else if strings.HasPrefix(err.Error(), "50") {
+			log.Info(LogString("Error:" + err.Error()))
+			log.Info(LogString("Reconnecting to etcd..."))
+			etcdClient = GetEtcdClient(s.EtcdEndpoints)
+
+		} else {
+			panic(err)
+		}
+		return
+	}
+
+	// Handle new ServiceBackends
+	backends, err := GetAllServiceEndpoints(s.EtcdEndpoints, s.EtcdBasePath)
+	s.newConfiguration.ServiceBackends = backends
+	if err != nil {
+		log.Error("GetAllServiceEndpoints error: %+v", err)
+		return
+	}
+
+	if !DeepEqual(s.currentConfiguration, s.newConfiguration) {
+		event := NewRuntimeConfigurationEvent{}
+		event.OldRuntimeConfiguration = s.currentConfiguration
+		event.NewRuntimeConfiguration = s.newConfiguration
+
+		log.Info("Going to send NewRuntimeConfigurationEvent")
+		s.incomingLoopbackEvents <- NewOrbitEvent(event)
+
+		s.currentConfiguration = s.newConfiguration
+	}
+}
+
 func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*OrbitConfiguration, error) {
 	oc := new(OrbitConfiguration)
 	oc.MachineConfigurations = make(map[string]MachineConfiguration)
@@ -686,9 +728,10 @@ func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []
 	var configuration MachineConfiguration
 	for _, tag := range tags {
 
-		res, err := etcd.Get(c.EtcdBasePath+"/machineconfigurations/tags/"+tag, true, true)
+		key := c.EtcdBasePath + "/machineconfigurations/tags/" + tag
+		res, err := etcd.Get(key, true, true)
 		if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
-			fmt.Fprintf(os.Stderr, "Error getting machine configuration. Err: %+v\n", err)
+			fmt.Fprintf(os.Stderr, "Error getting machine configuration from key %s. Err: %+v\n", key, err)
 			return configuration, err
 		}
 
@@ -771,17 +814,18 @@ func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []
 	return configuration, nil
 }
 
-func (c Containrunner) GetAllServiceEndpoints() (map[string]map[string]*EndpointInfo, error) {
+func GetAllServiceEndpoints(etcdEndpoints []string, etcdBasePath string) (map[string]map[string]*EndpointInfo, error) {
 
 	serviceBackends := make(map[string]map[string]*EndpointInfo)
 
-	etcdClient := GetEtcdClient(c.EtcdEndpoints)
+	etcdClient := GetEtcdClient(etcdEndpoints)
 	defer func() {
-		etcdClient.Close()
+		etcdClient.CloseCURL()
 	}()
 
-	res, err := etcdClient.Get(c.EtcdBasePath+"/services/", true, true)
+	res, err := etcdClient.Get(etcdBasePath+"/services/", true, true)
 	if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
+		log.Error("Could not get services from etcd endpoint: %+v", etcdEndpoints)
 		panic(err)
 	}
 
@@ -829,7 +873,7 @@ func (c Containrunner) GetEndpointsForService(service_name string) (map[string]*
 
 	etcdClient := GetEtcdClient(c.EtcdEndpoints)
 	defer func() {
-		etcdClient.Close()
+		etcdClient.CloseCURL()
 	}()
 
 	res, err := etcdClient.Get(c.EtcdBasePath+"/services/"+service_name+"/endpoints", true, true)

@@ -26,9 +26,11 @@ type CommandFunction func(interface{}) error
 //
 // Returns *Command which can be used to Wait() until the command has executed.
 func (cc *CommandController) Invoke(f CommandFunction, argument interface{}) (*Command, error) {
+	cc.lock.Lock()
 	if cc.commands == nil {
 		cc.commands = make(map[string]*Command)
 	}
+	cc.lock.Unlock()
 
 	return cc.InvokeNamed(runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name(), f, argument)
 }
@@ -38,13 +40,13 @@ func (cc *CommandController) Invoke(f CommandFunction, argument interface{}) (*C
 //
 // Returns *Command which can be used to Wait() until the command has executed.
 func (cc *CommandController) InvokeNamed(name string, f CommandFunction, argument interface{}) (*Command, error) {
+	cc.lock.Lock()
 	if cc.commands == nil {
 		cc.commands = make(map[string]*Command)
 	}
-
-	cc.lock.Lock()
-	command, err := cc.command(name, f, argument)
 	cc.lock.Unlock()
+
+	command, err := cc.command(name, f, argument)
 
 	return command, err
 }
@@ -55,12 +57,11 @@ func (cc *CommandController) InvokeNamed(name string, f CommandFunction, argumen
 //
 // Returns *Command which can be used to Wait() until the command has executed.
 func (cc *CommandController) InvokeIfNotAlreadyRunning(name string, f CommandFunction, argument interface{}) (*Command, error) {
+	cc.lock.Lock()
 	if cc.commands == nil {
 		cc.commands = make(map[string]*Command)
 	}
-
-	cc.lock.Lock()
-	defer cc.lock.Unlock()
+	cc.lock.Unlock()
 
 	if cc.IsRunning(name) == false {
 		command, err := cc.command(name, f, argument)
@@ -82,7 +83,9 @@ func (cc *CommandController) command(name string, f CommandFunction, argument in
 	command.Name = name
 	command.completed = make(chan error)
 
+	cc.lock.Lock()
 	cc.commands[command.Id] = command
+	cc.lock.Unlock()
 
 	go func() {
 		err := f(argument)
@@ -97,6 +100,9 @@ func (cc *CommandController) command(name string, f CommandFunction, argument in
 
 // Checks if there's at least one command running with the name.
 func (cc *CommandController) IsRunning(name string) bool {
+	cc.lock.Lock()
+	defer cc.lock.Unlock()
+
 	if cc.commands == nil {
 		cc.commands = make(map[string]*Command)
 	}
