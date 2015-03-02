@@ -74,8 +74,6 @@ func (s *Containrunner) Init() {
 		incomingNetworkEvents = s.Events.GetReceiveredEventChannel()
 	}
 
-	s.CheckEngine.Start(4, s.incomingLoopbackEvents, s.MachineAddress, s.CheckIntervalInMs)
-
 	s.webserver.Containrunner = s
 
 	go s.EventHandler(s.incomingLoopbackEvents, incomingNetworkEvents)
@@ -145,6 +143,7 @@ func (s *Containrunner) DispatchEvent(receiveredEvent OrbitEvent, etcdClient *et
 		break
 	case "DeploymentEvent":
 		log.Info("Event: %s", receiveredEvent.Type)
+
 		go s.HandleDeploymentEvent(receiveredEvent.Ptr.(DeploymentEvent))
 		break
 	case "ServiceStateEvent":
@@ -155,6 +154,7 @@ func (s *Containrunner) DispatchEvent(receiveredEvent OrbitEvent, etcdClient *et
 		go s.HandleNewRuntimeConfigurationEvent(receiveredEvent.Ptr.(NewRuntimeConfigurationEvent))
 		break
 	case "ConvergeContainersEvent":
+		//log.Info("Event: %s", receiveredEvent.Type)
 		go s.HandleConvergeContainersEvent(receiveredEvent.Ptr.(ConvergeContainersEvent))
 		break
 	}
@@ -300,7 +300,8 @@ func (s *Containrunner) SetLastConvergeTime(t time.Time) {
 }
 
 func (s *Containrunner) Start() {
-	log.Info(LogString("Starting Containrunner..."))
+	log.Info("Starting check engine with machine address %s", s.MachineAddress)
+	s.CheckEngine.Start(4, s.incomingLoopbackEvents, s.MachineAddress, s.CheckIntervalInMs)
 	atomic.StoreInt32(&s.pollerStarted, 1)
 }
 
