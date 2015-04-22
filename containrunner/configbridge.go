@@ -183,6 +183,7 @@ func (c *ConfigResultEtcdPublisher) PublishServiceState(serviceName string, endp
 // Polls for configuration updates and triggers a NewRuntimeConfigurationEvent.
 func (s *Containrunner) PollConfigurationUpdate() {
 	etcdClient := GetEtcdClient(s.EtcdEndpoints)
+	defer etcdClient.CloseCURL()
 
 	var err error
 
@@ -373,6 +374,8 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *OrbitConfiguration, etcdClient *etcd.Client) error {
 	if etcdClient == nil {
 		etcdClient = GetEtcdClient(c.EtcdEndpoints)
+		defer etcdClient.CloseCURL()
+
 		fmt.Fprintf(os.Stderr, "EtcdEndpoints: %s\n", c.EtcdEndpoints)
 	}
 
@@ -473,6 +476,8 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 func (c *Containrunner) GetAllServices(etcdClient *etcd.Client) (map[string]ServiceConfiguration, error) {
 	if etcdClient == nil {
 		etcdClient = GetEtcdClient(c.EtcdEndpoints)
+		defer etcdClient.CloseCURL()
+
 	}
 
 	services := make(map[string]ServiceConfiguration)
@@ -505,6 +510,8 @@ func (c *Containrunner) GetAllServices(etcdClient *etcd.Client) (map[string]Serv
 func (c *Containrunner) TagServiceToTag(service string, tag string, etcdClient *etcd.Client) error {
 	if etcdClient == nil {
 		etcdClient = GetEtcdClient(c.EtcdEndpoints)
+		defer etcdClient.CloseCURL()
+
 	}
 
 	key := c.EtcdBasePath + "/machineconfigurations/tags/" + tag + "/services/" + service
@@ -520,6 +527,8 @@ func (c *Containrunner) TagServiceToTag(service string, tag string, etcdClient *
 func (c *Containrunner) RemoveService(name string, etcdClient *etcd.Client) error {
 	if etcdClient == nil {
 		etcdClient = GetEtcdClient(c.EtcdEndpoints)
+		defer etcdClient.CloseCURL()
+
 	}
 
 	_, err := etcdClient.Delete(c.EtcdBasePath+"/services/"+name, true)
@@ -533,6 +542,8 @@ func (c *Containrunner) RemoveService(name string, etcdClient *etcd.Client) erro
 func (c *Containrunner) GetServiceByName(name string, etcdClient *etcd.Client, machineAddress string) (ServiceConfiguration, error) {
 	if etcdClient == nil {
 		etcdClient = GetEtcdClient(c.EtcdEndpoints)
+		defer etcdClient.CloseCURL()
+
 	}
 
 	res, err := etcdClient.Get(c.EtcdBasePath+"/services/"+name, true, true)
@@ -548,6 +559,7 @@ func (c *Containrunner) GetServiceByName(name string, etcdClient *etcd.Client, m
 		if node.Dir == false && strings.HasSuffix(node.Key, "/config") {
 			err = json.Unmarshal([]byte(node.Value), &serviceConfiguration)
 			if err != nil {
+				fmt.Printf("Error unmarshalling on key %s\n", node.Key)
 				panic(err)
 			}
 		}
@@ -819,9 +831,7 @@ func GetAllServiceEndpoints(etcdEndpoints []string, etcdBasePath string) (map[st
 	serviceBackends := make(map[string]map[string]*EndpointInfo)
 
 	etcdClient := GetEtcdClient(etcdEndpoints)
-	defer func() {
-		etcdClient.CloseCURL()
-	}()
+	defer etcdClient.CloseCURL()
 
 	res, err := etcdClient.Get(etcdBasePath+"/services/", true, true)
 	if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
@@ -872,9 +882,7 @@ func GetAllServiceEndpoints(etcdEndpoints []string, etcdBasePath string) (map[st
 func (c Containrunner) GetEndpointsForService(service_name string) (map[string]*EndpointInfo, error) {
 
 	etcdClient := GetEtcdClient(c.EtcdEndpoints)
-	defer func() {
-		etcdClient.CloseCURL()
-	}()
+	defer etcdClient.CloseCURL()
 
 	res, err := etcdClient.Get(c.EtcdBasePath+"/services/"+service_name+"/endpoints", true, true)
 	if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
@@ -945,6 +953,7 @@ func (c Containrunner) GetServiceRevision(service_name string, etcd *etcd.Client
 func (c Containrunner) SetServiceRevision(service_name string, serviceRevision ServiceRevision, etcdClient *etcd.Client) error {
 	if etcdClient == nil {
 		etcdClient = GetEtcdClient(c.EtcdEndpoints)
+		defer etcdClient.CloseCURL()
 	}
 
 	bytes, err := json.Marshal(serviceRevision)
@@ -961,6 +970,7 @@ func (c Containrunner) SetServiceRevision(service_name string, serviceRevision S
 func (c Containrunner) SetServiceRevisionForMachine(service_name string, serviceRevision ServiceRevision, machineAddress string, etcdClient *etcd.Client) error {
 	if etcdClient == nil {
 		etcdClient = GetEtcdClient(c.EtcdEndpoints)
+		defer etcdClient.CloseCURL()
 	}
 
 	bytes, err := json.Marshal(serviceRevision)

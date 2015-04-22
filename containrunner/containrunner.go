@@ -51,6 +51,7 @@ func (s *Containrunner) Init() {
 	rand.Seed(time.Now().UnixNano())
 
 	etcdClient := GetEtcdClient(s.EtcdEndpoints)
+	defer etcdClient.CloseCURL()
 
 	globalConfiguration, err := s.GetGlobalOrbitProperties(etcdClient)
 	if err != nil {

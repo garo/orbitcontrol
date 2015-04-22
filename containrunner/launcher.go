@@ -172,6 +172,8 @@ func ConvergeContainers(conf MachineConfiguration, preDelay bool, client *docker
 	var matching_containers []ContainerDetails
 	for _, required_bound_service := range conf.Services {
 		required_service := required_bound_service.GetConfig()
+
+		log.Debug("required_bound_service: %+v", required_bound_service)
 		if required_service.Container == nil {
 			continue
 		}
@@ -270,7 +272,9 @@ func stringInSlice(a string, list []string) bool {
 func CleanupOldAuthoritativeImages(authoritative_names []string, preserve_names []string, client *docker.Client) error {
 	var imageRegexp = regexp.MustCompile("(.+):(.+)")
 
-	storedImages, err := client.ListImages(false)
+	opts := docker.ListImagesOptions{}
+
+	storedImages, err := client.ListImages(opts)
 	if err != nil {
 		return err
 	}
@@ -495,13 +499,14 @@ func LaunchContainer(name string, imageName string, container *ContainerConfigur
 	//log.Info(LogEvent(ContainerLogEvent{"create-and-launch", imageName, name}))
 	new_container, err := client.CreateContainer(options)
 	if err != nil {
-		panic(err)
+		fmt.Printf("Error on CreateContainer %+v: %+v", options, err)
+		return err
 	}
 
 	err = client.StartContainer(new_container.ID, &container.HostConfig)
 	if err != nil {
 		log.Error("Could not start container")
-		panic(err)
+		fmt.Printf("Error on StartContainer ID %s: %+v", new_container.ID, err)
 	}
 
 	return nil
@@ -513,6 +518,7 @@ func DestroyContainer(name string, client *docker.Client) error {
 	var existing_containers_info []docker.APIContainers
 	existing_containers_info, err := client.ListContainers(docker.ListContainersOptions{All: true})
 	if err != nil {
+		fmt.Printf("Error listing containers: %+v\n", err)
 		return err
 	}
 

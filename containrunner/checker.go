@@ -165,7 +165,6 @@ func CheckServiceWorker(serviceChecksChannel <-chan ServiceChecks, results chan<
 			var result ServiceStateEvent
 			result.Service = serviceChecks.ServiceName
 			result.Endpoint = fmt.Sprintf("%s:%d", endpointAddress, serviceChecks.EndpointPort)
-			log.Info("Setting Endpoint from %s and %d", endpointAddress, serviceChecks.EndpointPort)
 			result.EndpointInfo = serviceChecks.EndpointInfo
 			result.IsUp = true
 			ok := true
