@@ -59,7 +59,7 @@ func (ce *CheckEngine) Start(workers int, results chan<- OrbitEvent, endpointAdd
 	ce.endpointAddress = endpointAddress
 
 	log.Info("CheckEngine Start. configurations chan: %+v", ce.configurations)
-	go CheckConfigUpdateWorker(ce.configurations, results, endpointAddress, 1000)
+	go CheckConfigUpdateWorker(ce.configurations, results, endpointAddress, 2000)
 }
 
 func (ce *CheckEngine) Stop() {
@@ -202,7 +202,9 @@ func CheckServiceWorker(serviceChecksChannel <-chan ServiceChecks, results chan<
 			state = newState
 			result.SameStateSince = sameStateSince
 
+			fmt.Printf("Going to push ServiceStateEvent result for %s\n", serviceChecks.ServiceName)
 			results <- NewOrbitEvent(result)
+			fmt.Printf("push done for ServiceStateEvent result for %s\n", serviceChecks.ServiceName)
 
 		}
 

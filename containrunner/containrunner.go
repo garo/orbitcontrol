@@ -51,7 +51,7 @@ func (s *Containrunner) Init() {
 	rand.Seed(time.Now().UnixNano())
 
 	etcdClient := GetEtcdClient(s.EtcdEndpoints)
-	defer etcdClient.CloseCURL()
+	defer etcdClient.Close()
 
 	globalConfiguration, err := s.GetGlobalOrbitProperties(etcdClient)
 	if err != nil {
@@ -77,7 +77,7 @@ func (s *Containrunner) Init() {
 
 	s.webserver.Containrunner = s
 
-	go s.EventHandler(s.incomingLoopbackEvents, incomingNetworkEvents)
+	go s.EventHandler(incomingNetworkEvents, s.incomingLoopbackEvents)
 
 }
 
@@ -91,7 +91,7 @@ func (s *Containrunner) Init() {
 // block polls for new configuration changes and triggers periodic operations.
 func (s *Containrunner) EventHandler(incomingNetworkEvents <-chan OrbitEvent, incomingLoopbackEvents <-chan OrbitEvent) {
 	etcdClient := GetEtcdClient(s.EtcdEndpoints)
-	defer etcdClient.CloseCURL()
+	defer etcdClient.Close()
 
 	log.Info("EventHandler main loop started")
 	for {
@@ -103,32 +103,51 @@ func (s *Containrunner) EventHandler(incomingNetworkEvents <-chan OrbitEvent, in
 			}
 			break
 
-		case event, ok := <-incomingNetworkEvents:
+		case netEvent, ok := <-incomingNetworkEvents:
 			if !ok {
 				incomingNetworkEvents = nil
 			}
-			s.DispatchEvent(event, etcdClient)
+			log.Debug("Got incoming network event: %+v", netEvent)
+			s.DispatchEvent(netEvent, etcdClient)
 			break
 
-		case event, ok := <-incomingLoopbackEvents:
+		case loopbackEvent, ok := <-incomingLoopbackEvents:
 			if !ok {
 				incomingLoopbackEvents = nil
 			}
-			s.DispatchEvent(event, etcdClient)
+			log.Debug("Got incoming loopback event: %+v", loopbackEvent)
+			s.DispatchEvent(loopbackEvent, etcdClient)
 			break
 
 		case <-time.After(2 * time.Second):
 			break
 		}
 
+		log.Debug("Items in incomingLoopbackEvents: %d, items in incomingNetworkEvents: %d", len(incomingLoopbackEvents), len(incomingNetworkEvents))
+
 		if atomic.LoadInt32(&s.pollerStarted) == 1 {
+			log.Debug("pollerStarted")
 			s.webserver.Keepalive()
 			// the LastConvergeTime is updated by the HandleConvergeContainerEvent
 			if time.Now().Sub(s.GetLastConvergeTime()) > time.Second*10 {
-				s.PollConfigurationUpdate()
-				s.incomingLoopbackEvents <- NewOrbitEvent(ConvergeContainersEvent{s.newConfiguration.MachineConfiguration})
+
+				if !s.CommandController.IsRunning("PollConfigurationUpdate") {
+					f := func(arguments interface{}) error {
+						log.Debug("Going to push a ConvergeContainerEvent")
+						s.PollConfigurationUpdate()
+						log.Debug("PollConfigurationUpdate done")
+
+						s.HandleConvergeContainersEvent(ConvergeContainersEvent{s.newConfiguration.MachineConfiguration})
+						log.Debug("direct call to HandleConvergeContainersEvent is done")
+
+						return nil
+					}
+					s.CommandController.InvokeIfNotAlreadyRunning("PollConfigurationUpdate", f, nil)
+				}
+
 			}
 		}
+		log.Debug("Loop goes around")
 
 		if incomingLoopbackEvents == nil && incomingNetworkEvents == nil {
 			return
@@ -185,7 +204,8 @@ func (s *Containrunner) HandleConvergeContainersEvent(e ConvergeContainersEvent)
 		f := func(arguments interface{}) error {
 			docker := GetDockerClient()
 			configuration := arguments.(MachineConfiguration)
-			log.Info("Converging containers with configuration: %+v", configuration)
+			log.Info("Converging containers with configuration")
+			//log.Info("Converging containers with configuration: %+v", configuration)
 
 			err := ConvergeContainers(configuration, true, docker)
 

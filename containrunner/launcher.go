@@ -173,7 +173,7 @@ func ConvergeContainers(conf MachineConfiguration, preDelay bool, client *docker
 	for _, required_bound_service := range conf.Services {
 		required_service := required_bound_service.GetConfig()
 
-		log.Debug("required_bound_service: %+v", required_bound_service)
+		//log.Debug("required_bound_service: %+v", required_bound_service)
 		if required_service.Container == nil {
 			continue
 		}
@@ -194,7 +194,7 @@ func ConvergeContainers(conf MachineConfiguration, preDelay bool, client *docker
 				log.Debug("Found one matching container and it's not running! Removing it so we can start it again", matching_containers[0])
 				err = client.RemoveContainer(docker.RemoveContainerOptions{matching_containers[0].Container.ID, true, true})
 				if err != nil {
-					panic(err)
+					log.Warning("Tried to delete container %s which was supposed to exists", matching_containers[0].Container.ID)
 				}
 
 			}
