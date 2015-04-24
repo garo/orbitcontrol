@@ -1,40 +1,41 @@
 package containrunner
 
 import (
-	. "gopkg.in/check.v1"
 	"io/ioutil"
 	"net/http"
+	"testing"
 )
 
-type WebserverSuite struct {
-}
-
-var _ = Suite(&WebserverSuite{})
-
-func (s *WebserverSuite) SetUpTest(c *C) {
-
-}
-
-func (s *WebserverSuite) TestCheckHandler(c *C) {
+func TestCheckHandler(t *testing.T) {
 
 	server := new(Webserver)
 	err := server.Start(64123)
-	c.Assert(err, IsNil)
+	if err != nil {
+		t.Fail()
+	}
 	resp, err := http.Get("http://localhost:64123/check")
-	c.Assert(err, IsNil)
+	if err != nil {
+		t.Fail()
+	}
 	body, err := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 
-	c.Assert(string(body), Not(Equals), "OK\n")
+	if string(body) == "OK\n" {
+		t.Fail()
+	}
 
 	server.Keepalive()
 
 	resp, err = http.Get("http://localhost:64123/check")
-	c.Assert(err, IsNil)
+	if err != nil {
+		t.Fail()
+	}
 	body, err = ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 
-	c.Assert(string(body), Equals, "OK\n")
+	if string(body) != "OK\n" {
+		t.Fail()
+	}
 
 	server.Close()
 

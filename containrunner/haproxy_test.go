@@ -3,19 +3,12 @@ package containrunner
 import (
 	"bufio"
 	"fmt"
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"net"
 	"os"
+	"testing"
 )
-
-type HAProxySuite struct {
-}
-
-var _ = Suite(&HAProxySuite{})
-
-func (s *HAProxySuite) SetUpTest(c *C) {
-}
 
 type ConfigBridgeInterfaceMock struct {
 	Stub func(service_name string) (map[string]*EndpointInfo, error)
@@ -25,7 +18,7 @@ func (c ConfigBridgeInterfaceMock) GetEndpointsForService(service_name string) (
 	return c.Stub(service_name)
 }
 
-func (s *HAProxySuite) TestConvergeHAProxy(c *C) {
+func TestConvergeHAProxy(t *testing.T) {
 	var settings HAProxySettings
 	settings.HAProxyBinary = "/usr/sbin/haproxy"
 	settings.HAProxyConfigName = "haproxy-test-config.cfg"
@@ -60,14 +53,14 @@ listen test 127.0.0.1:80
 	}
 
 	err = settings.ConvergeHAProxy(&runtimeConfiguration, nil)
-	c.Assert(err, IsNil)
+	assert.Nil(t, err)
 
 	var bytes []byte
 	bytes, err = ioutil.ReadFile("/tmp/haproxy-test-config.cfg")
-	c.Assert(err, IsNil)
+	assert.Nil(t, err)
 
 	str := string(bytes)
-	c.Assert(str, Equals, `
+	assert.Equal(t, str, `
 defaults
 	contimeout 5000
 	clitimeout 60000
@@ -86,7 +79,7 @@ listen test 127.0.0.1:80
 
 }
 
-func (s *HAProxySuite) TestGetNewConfig2(c *C) {
+func TestGetNewConfig2(t *testing.T) {
 	var settings HAProxySettings
 
 	runtimeConfiguration := RuntimeConfiguration{}
@@ -118,31 +111,28 @@ listen test 127.0.0.1:80
 
 `
 
-	str, err := settings.GetNewConfig(&runtimeConfiguration)
-	c.Assert(err, IsNil)
-	fmt.Printf("********************\n")
-	fmt.Printf(str)
-	fmt.Printf("********************\n")
+	_, err := settings.GetNewConfig(&runtimeConfiguration)
+	assert.Nil(t, err)
 
 }
 
-func (s *HAProxySuite) TestReloadHAProxyOk(c *C) {
+func TestReloadHAProxyOk(t *testing.T) {
 	var settings HAProxySettings
 	settings.HAProxyReloadCommand = "/bin/true"
 
 	err := settings.ReloadHAProxy()
-	c.Assert(err, IsNil)
+	assert.Nil(t, err)
 }
 
-func (s *HAProxySuite) TestReloadHAProxyError(c *C) {
+func TestReloadHAProxyError(t *testing.T) {
 	var settings HAProxySettings
 	settings.HAProxyReloadCommand = "/bin/false"
 
 	err := settings.ReloadHAProxy()
-	c.Assert(err, Not(IsNil))
+	assert.NotNil(t, err)
 }
 
-func (s *HAProxySuite) TestGetNewConfig(c *C) {
+func TestGetNewConfig(t *testing.T) {
 	var settings HAProxySettings
 
 	runtimeConfiguration := RuntimeConfiguration{}
@@ -150,12 +140,12 @@ func (s *HAProxySuite) TestGetNewConfig(c *C) {
 	runtimeConfiguration.MachineConfiguration.HAProxyConfiguration.Template = "foo\nbar"
 
 	str, err := settings.GetNewConfig(&runtimeConfiguration)
-	c.Assert(err, IsNil)
+	assert.Nil(t, err)
 
-	c.Assert(str, Equals, "foo\nbar")
+	assert.Equal(t, str, "foo\nbar")
 }
 
-func (s *HAProxySuite) TestBuildAndVerifyNewConfigWithErrors(c *C) {
+func TestBuildAndVerifyNewConfigWithErrors(t *testing.T) {
 	var settings HAProxySettings
 	settings.HAProxyBinary = "/usr/sbin/haproxy"
 	runtimeConfiguration := RuntimeConfiguration{}
@@ -163,12 +153,12 @@ func (s *HAProxySuite) TestBuildAndVerifyNewConfigWithErrors(c *C) {
 	runtimeConfiguration.MachineConfiguration.HAProxyConfiguration.Template = "foo\nbar"
 
 	config, err := settings.BuildAndVerifyNewConfig(&runtimeConfiguration)
-	c.Assert(err, Not(IsNil))
-	c.Assert(config, Equals, "")
+	assert.NotNil(t, err)
+	assert.Equal(t, config, "")
 
 }
 
-func (s *HAProxySuite) TestBuildAndVerifyNewConfig(c *C) {
+func TestBuildAndVerifyNewConfig(t *testing.T) {
 	var settings HAProxySettings
 	settings.HAProxyBinary = "/usr/sbin/haproxy"
 	settings.HAProxyConfigPath = "/tmp"
@@ -189,15 +179,15 @@ Content-Type: text/html
 `
 
 	config, err := settings.BuildAndVerifyNewConfig(&runtimeConfiguration)
-	c.Assert(err, IsNil)
-	c.Assert(config, Equals, runtimeConfiguration.MachineConfiguration.HAProxyConfiguration.Template)
+	assert.Nil(t, err)
+	assert.Equal(t, runtimeConfiguration.MachineConfiguration.HAProxyConfiguration.Template, config)
 
 	err = settings.CommitNewConfig(config, false)
-	c.Assert(err, IsNil)
+	assert.Nil(t, err)
 
 	bytes, err := ioutil.ReadFile(settings.HAProxyConfigPath + "/500.http")
-	c.Assert(err, IsNil)
-	c.Assert(string(bytes), Equals, `HTTP/1.0 500 Service Unavailable
+	assert.Nil(t, err)
+	assert.Equal(t, string(bytes), `HTTP/1.0 500 Service Unavailable
 Cache-Control: no-cache
 Connection: close
 Content-Type: text/html
@@ -206,7 +196,7 @@ Content-Type: text/html
 
 }
 
-func (s *HAProxySuite) TestUpdateBackendsUpdateRequiredWithNewBackendSection(c *C) {
+func TestUpdateBackendsUpdateRequiredWithNewBackendSection(t *testing.T) {
 	var settings HAProxySettings
 	settings.HAProxySocket = "/tmp/sock_srv"
 
@@ -217,9 +207,7 @@ func (s *HAProxySuite) TestUpdateBackendsUpdateRequiredWithNewBackendSection(c *
 	runtimeConfiguration.LocallyRequiredServices["comet"] = backends
 
 	ln, err := net.Listen("unix", "/tmp/sock_srv")
-	if err != nil {
-		panic(err)
-	}
+	assert.Nil(t, err)
 	defer os.Remove("/tmp/sock_srv")
 
 	defer ln.Close()
@@ -242,13 +230,12 @@ func (s *HAProxySuite) TestUpdateBackendsUpdateRequiredWithNewBackendSection(c *
 
 	restart_required, err := settings.UpdateBackends(&runtimeConfiguration)
 
-	c.Assert(err, IsNil)
-	c.Assert(restart_required, Equals, true)
+	assert.Nil(t, err)
+	assert.Equal(t, restart_required, true)
 
 }
 
-func (s *HAProxySuite) TestUpdateBackendsUpdateRequiredWithNewEndpointInBackend(c *C) {
-	fmt.Println("TestUpdateBackendsUpdateRequiredWithNewEndpointInBackend")
+func TestUpdateBackendsUpdateRequiredWithNewEndpointInBackend(t *testing.T) {
 
 	var settings HAProxySettings
 	//settings.HAProxySocket = "/var/run/haproxy/admin.sock"
@@ -261,9 +248,7 @@ func (s *HAProxySuite) TestUpdateBackendsUpdateRequiredWithNewEndpointInBackend(
 	runtimeConfiguration.LocallyRequiredServices["comet"] = backends
 
 	ln, err := net.Listen("unix", "/tmp/sock_srv")
-	if err != nil {
-		panic(err)
-	}
+	assert.Nil(t, err)
 	defer os.Remove("/tmp/sock_srv")
 
 	defer ln.Close()
@@ -289,12 +274,12 @@ func (s *HAProxySuite) TestUpdateBackendsUpdateRequiredWithNewEndpointInBackend(
 
 	restart_required, err := settings.UpdateBackends(&runtimeConfiguration)
 
-	c.Assert(err, IsNil)
-	c.Assert(restart_required, Equals, true)
+	assert.Nil(t, err)
+	assert.Equal(t, restart_required, true)
 
 }
 
-func (s *HAProxySuite) TestUpdateBackendsNoUpdateRequiredEverythingMatches(c *C) {
+func TestUpdateBackendsNoUpdateRequiredEverythingMatches(t *testing.T) {
 	fmt.Println("TestUpdateBackendsNoUpdateRequiredEverythingMatches")
 	var settings HAProxySettings
 	//settings.HAProxySocket = "/var/run/haproxy/admin.sock"
@@ -309,9 +294,7 @@ func (s *HAProxySuite) TestUpdateBackendsNoUpdateRequiredEverythingMatches(c *C)
 	var commands []string
 
 	ln, err := net.Listen("unix", "/tmp/sock_srv")
-	if err != nil {
-		panic(err)
-	}
+	assert.Nil(t, err)
 	defer os.Remove("/tmp/sock_srv")
 
 	defer ln.Close()
@@ -338,14 +321,13 @@ func (s *HAProxySuite) TestUpdateBackendsNoUpdateRequiredEverythingMatches(c *C)
 
 	restart_required, err := settings.UpdateBackends(&runtimeConfiguration)
 
-	c.Assert(err, IsNil)
-	c.Assert(restart_required, Equals, false)
+	assert.Nil(t, err)
+	assert.Equal(t, false, restart_required)
 
-	c.Assert(commands[0], Equals, "show stat\n")
+	assert.Equal(t, commands[0], "show stat\n")
 }
 
-func (s *HAProxySuite) TestUpdateBackendsNoUpdateRequiredButServerMustBeDisabled(c *C) {
-	fmt.Println("TestUpdateBackendsNoUpdateRequiredButServerMustBeDisabled")
+func TestUpdateBackendsNoUpdateRequiredButServerMustBeDisabled(t *testing.T) {
 	var settings HAProxySettings
 	//settings.HAProxySocket = "/var/run/haproxy/admin.sock"
 	settings.HAProxySocket = "/tmp/sock_srv"
@@ -361,9 +343,7 @@ func (s *HAProxySuite) TestUpdateBackendsNoUpdateRequiredButServerMustBeDisabled
 	commands := make(chan string, 5)
 
 	ln, err := net.Listen("unix", "/tmp/sock_srv")
-	if err != nil {
-		panic(err)
-	}
+	assert.Nil(t, err)
 	defer os.Remove("/tmp/sock_srv")
 
 	defer ln.Close()
@@ -394,17 +374,15 @@ func (s *HAProxySuite) TestUpdateBackendsNoUpdateRequiredButServerMustBeDisabled
 
 	restart_required, err := settings.UpdateBackends(&runtimeConfiguration)
 
-	c.Assert(err, IsNil)
-	c.Assert(restart_required, Equals, false)
+	assert.Nil(t, err)
+	assert.Equal(t, false, restart_required)
 
-	c.Assert(<-commands, Equals, "show stat\n")
-	c.Assert(<-commands, Equals, "disable server comet/comet-172.16.2.162:3500\n")
+	assert.Equal(t, <-commands, "show stat\n")
+	assert.Equal(t, <-commands, "disable server comet/comet-172.16.2.162:3500\n")
 }
 
-func (s *HAProxySuite) TestUpdateBackendsUpdateRequired_because_less_than80_percent_servers_are_up(c *C) {
-	fmt.Println("TestUpdateBackendsUpdateRequired_because_less_than80_percent_servers_are_up")
+func TestUpdateBackendsUpdateRequired_because_less_than80_percent_servers_are_up(t *testing.T) {
 	var settings HAProxySettings
-	//settings.HAProxySocket = "/var/run/haproxy/admin.sock"
 	settings.HAProxySocket = "/tmp/sock_srv"
 
 	runtimeConfiguration := RuntimeConfiguration{}
@@ -432,9 +410,7 @@ func (s *HAProxySuite) TestUpdateBackendsUpdateRequired_because_less_than80_perc
 	commands := make(chan string, 5)
 
 	ln, err := net.Listen("unix", "/tmp/sock_srv")
-	if err != nil {
-		panic(err)
-	}
+	assert.Nil(t, err)
 	defer os.Remove("/tmp/sock_srv")
 
 	defer ln.Close()
@@ -466,12 +442,11 @@ func (s *HAProxySuite) TestUpdateBackendsUpdateRequired_because_less_than80_perc
 
 	restart_required, err := settings.UpdateBackends(&runtimeConfiguration)
 
-	c.Assert(err, IsNil)
-	c.Assert(restart_required, Equals, true)
-
-	c.Assert(<-commands, Equals, "show stat\n")
+	assert.Nil(t, err)
+	assert.Equal(t, true, restart_required)
+	assert.Equal(t, <-commands, "show stat\n")
 }
-func (s *HAProxySuite) TestUpdateBackendsNoUpdateRequiredButServerMustBeEnabled(c *C) {
+func TestUpdateBackendsNoUpdateRequiredButServerMustBeEnabled(t *testing.T) {
 	fmt.Println("TestUpdateBackendsNoUpdateRequiredButServerMustBeDisabled")
 	var settings HAProxySettings
 	//settings.HAProxySocket = "/var/run/haproxy/admin.sock"
@@ -488,9 +463,7 @@ func (s *HAProxySuite) TestUpdateBackendsNoUpdateRequiredButServerMustBeEnabled(
 	commands := make(chan string, 5)
 
 	ln, err := net.Listen("unix", "/tmp/sock_srv")
-	if err != nil {
-		panic(err)
-	}
+	assert.Nil(t, err)
 	defer os.Remove("/tmp/sock_srv")
 
 	defer ln.Close()
@@ -519,17 +492,16 @@ func (s *HAProxySuite) TestUpdateBackendsNoUpdateRequiredButServerMustBeEnabled(
 
 	restart_required, err := settings.UpdateBackends(&runtimeConfiguration)
 
-	c.Assert(err, IsNil)
-	c.Assert(restart_required, Equals, false)
+	assert.Nil(t, err)
 
-	c.Assert(<-commands, Equals, "show stat\n")
-	c.Assert(<-commands, Equals, "enable server comet/comet-172.16.2.160:3500\n")
+	assert.Equal(t, false, restart_required)
+	assert.Equal(t, <-commands, "show stat\n")
+	assert.Equal(t, <-commands, "enable server comet/comet-172.16.2.160:3500\n")
 }
 
-func (s *HAProxySuite) TestUpdateBackendsNoUpdateRequiredButDownServerMustBeDisabled(c *C) {
+func TestUpdateBackendsNoUpdateRequiredButDownServerMustBeDisabled(t *testing.T) {
 	fmt.Println("TestUpdateBackendsNoUpdateRequiredButDownServerMustBeDisabled")
 	var settings HAProxySettings
-	//settings.HAProxySocket = "/var/run/haproxy/admin.sock"
 	settings.HAProxySocket = "/tmp/sock_srv"
 
 	runtimeConfiguration := RuntimeConfiguration{}
@@ -544,9 +516,7 @@ func (s *HAProxySuite) TestUpdateBackendsNoUpdateRequiredButDownServerMustBeDisa
 	commands := make(chan string, 5)
 
 	ln, err := net.Listen("unix", "/tmp/sock_srv")
-	if err != nil {
-		panic(err)
-	}
+	assert.Nil(t, err)
 	defer os.Remove("/tmp/sock_srv")
 
 	defer ln.Close()
@@ -577,14 +547,14 @@ func (s *HAProxySuite) TestUpdateBackendsNoUpdateRequiredButDownServerMustBeDisa
 
 	restart_required, err := settings.UpdateBackends(&runtimeConfiguration)
 
-	c.Assert(err, IsNil)
-	c.Assert(restart_required, Equals, false)
+	assert.Nil(t, err)
+	assert.Equal(t, false, restart_required)
+	assert.Equal(t, <-commands, "show stat\n")
+	assert.Equal(t, <-commands, "disable server comet/comet-172.16.2.162:3500\n")
 
-	c.Assert(<-commands, Equals, "show stat\n")
-	c.Assert(<-commands, Equals, "disable server comet/comet-172.16.2.162:3500\n")
 }
 
-func (s *HAProxySuite) TestUpdateBackendsNoCheck(c *C) {
+func TestUpdateBackendsNoCheck(t *testing.T) {
 	fmt.Println("****** TestUpdateBackendsNoCheck")
 	var settings HAProxySettings
 	settings.HAProxySocket = "/tmp/sock_srv"
@@ -601,9 +571,7 @@ func (s *HAProxySuite) TestUpdateBackendsNoCheck(c *C) {
 	commands := make(chan string, 5)
 
 	ln, err := net.Listen("unix", "/tmp/sock_srv")
-	if err != nil {
-		panic(err)
-	}
+	assert.Nil(t, err)
 	defer os.Remove("/tmp/sock_srv")
 
 	defer ln.Close()
@@ -634,20 +602,20 @@ func (s *HAProxySuite) TestUpdateBackendsNoCheck(c *C) {
 
 	restart_required, err := settings.UpdateBackends(&runtimeConfiguration)
 
-	c.Assert(err, IsNil)
-	c.Assert(restart_required, Equals, false)
+	assert.Nil(t, err)
 
-	c.Assert(<-commands, Equals, "show stat\n")
+	assert.Equal(t, false, restart_required)
+	assert.Equal(t, <-commands, "show stat\n")
+
 	select {
 	case <-commands:
-		c.Assert(true, Equals, false)
+		t.Fail()
 	default:
-		c.Assert(true, Equals, true)
+
 	}
 }
 
-func (s *HAProxySuite) TestUpdateMultipleBackends(c *C) {
-	fmt.Println("****** TestUpdateBackendsNoCheck")
+func TestUpdateMultipleBackends(t *testing.T) {
 	var settings HAProxySettings
 	settings.HAProxySocket = "/tmp/sock_srv*.sock"
 
@@ -670,9 +638,7 @@ func (s *HAProxySuite) TestUpdateMultipleBackends(c *C) {
 	defer ln1.Close()
 
 	ln2, err := net.Listen("unix", "/tmp/sock_srv2.sock")
-	if err != nil {
-		panic(err)
-	}
+	assert.Nil(t, err)
 	defer os.Remove("/tmp/sock_srv2.sock")
 	defer ln2.Close()
 
@@ -705,11 +671,10 @@ func (s *HAProxySuite) TestUpdateMultipleBackends(c *C) {
 
 	restart_required, err := settings.UpdateBackends(&runtimeConfiguration)
 
-	c.Assert(err, IsNil)
-	c.Assert(restart_required, Equals, false)
-
-	c.Assert(<-commands, Equals, "show stat\n")
-	c.Assert(<-commands, Equals, "disable server comet/comet-172.16.2.162:3500\n")
-	c.Assert(<-commands, Equals, "disable server comet/comet-172.16.2.162:3500\n")
+	assert.Nil(t, err)
+	assert.Equal(t, false, restart_required)
+	assert.Equal(t, <-commands, "show stat\n")
+	assert.Equal(t, <-commands, "disable server comet/comet-172.16.2.162:3500\n")
+	assert.Equal(t, <-commands, "disable server comet/comet-172.16.2.162:3500\n")
 
 }

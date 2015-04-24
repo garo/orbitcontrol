@@ -2,25 +2,19 @@ package containrunner
 
 import (
 	"fmt"
-	. "gopkg.in/check.v1"
+	"testing"
 )
 
-type RabbitMQSuite struct {
-	queuer RabbitMQQueuer
-}
-
-var _ = Suite(&RabbitMQSuite{})
-
-func (s *RabbitMQSuite) SetUpTest(c *C) {
+func TestPublishAndConsume(t *testing.T) {
+	queuer := RabbitMQQueuer{}
 	fmt.Printf("Connecting to broker\n")
 
-	connected := s.queuer.Init("amqp://guest:guest@localhost:5672/", "")
-	c.Assert(connected, Equals, true)
-	fmt.Printf("Broker: %+v\n", s.queuer.deploymentEventsQueue)
+	connected := queuer.Init("amqp://guest:guest@localhost:5672/", "")
+	if connected != true {
+		t.Fail()
+	}
+	fmt.Printf("Broker: %+v\n", queuer.deploymentEventsQueue)
 
-}
-
-func (s *RabbitMQSuite) TestPublishAndConsume(c *C) {
 	e := NewOrbitEvent(DeploymentEvent{
 		"action",
 		"service name",
@@ -32,11 +26,15 @@ func (s *RabbitMQSuite) TestPublishAndConsume(c *C) {
 
 	fmt.Printf("Publishing to mq\n")
 
-	err := s.queuer.PublishOrbitEvent(e)
-	c.Assert(err, Equals, nil)
+	err := queuer.PublishOrbitEvent(e)
+	if err != nil {
+		t.Fail()
+	}
 
-	receiver := s.queuer.GetReceiveredEventChannel()
+	receiver := queuer.GetReceiveredEventChannel()
 	event := <-receiver
 
-	c.Assert(event.Type, Equals, "DeploymentEvent")
+	if event.Type != "DeploymentEvent" {
+		t.Fail()
+	}
 }

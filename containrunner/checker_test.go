@@ -1,33 +1,23 @@
 package containrunner
 
-//import "testing"
+import (
+	"fmt"
+	"github.com/stretchr/testify/assert"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
 
-//import "fmt"
-import . "gopkg.in/check.v1"
-import "net/http"
-import "net/http/httptest"
-import "fmt"
-import "time"
-
-//import "github.com/stretchr/testify/mock"
-
-type CheckerSuite struct {
-}
-
-var _ = Suite(&CheckerSuite{})
-
-func (s *CheckerSuite) SetUpTest(c *C) {
-}
-
-func (s *CheckerSuite) TestDummyService(c *C) {
+func TestDummyService(t *testing.T) {
 	checkTrue := ServiceCheck{Type: "dummy", DummyResult: true}
 	checkFalse := ServiceCheck{Type: "dummy", DummyResult: false}
 
-	c.Assert(CheckDummyService(checkTrue), Equals, true)
-	c.Assert(CheckDummyService(checkFalse), Equals, false)
+	assert.Equal(t, true, CheckDummyService(checkTrue))
+	assert.Equal(t, false, CheckDummyService(checkFalse))
 }
 
-func (s *CheckerSuite) TestCheckServiceWorker(c *C) {
+func TestCheckServiceWorker(t *testing.T) {
 	serviceChecksChannel := make(chan ServiceChecks)
 	results := make(chan OrbitEvent, 10)
 
@@ -38,19 +28,19 @@ func (s *CheckerSuite) TestCheckServiceWorker(c *C) {
 	serviceChecksChannel <- serviceChecks
 	result := (<-results).Ptr.(ServiceStateEvent)
 
-	c.Assert(result.IsUp, Equals, true)
+	assert.Equal(t, true, result.IsUp)
 }
 
-func (s *CheckerSuite) TestTCPService(c *C) {
+func TestTCPService(t *testing.T) {
 	checkTrue := ServiceCheck{Type: "tcp", HostPort: "127.0.0.1:22"}
 	checkFalse := ServiceCheck{Type: "tcp", HostPort: "127.0.0.1:1"}
 	//checkTrueExpect := ServiceCheck{Type: "tcp", HostPort: "127.0.0.1:22", ExpectString: "SSH"}
 
-	c.Assert(CheckTcpService(checkTrue), Equals, true)
-	c.Assert(CheckTcpService(checkFalse), Equals, false)
+	assert.Equal(t, true, CheckTcpService(checkTrue))
+	assert.Equal(t, false, CheckTcpService(checkFalse))
 }
 
-func (s *CheckerSuite) TestHttpService(c *C) {
+func TestHttpService(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.RequestURI == "/check" {
 			fmt.Fprintln(w, "OK")
@@ -63,11 +53,12 @@ func (s *CheckerSuite) TestHttpService(c *C) {
 	checkTrue := ServiceCheck{Type: "http", Url: ts.URL + "/check"}
 	checkFalse := ServiceCheck{Type: "http", Url: ts.URL + "/notFound"}
 
-	c.Assert(CheckHttpService(checkTrue), Equals, true)
-	c.Assert(CheckHttpService(checkFalse), Equals, false)
+	assert.Equal(t, true, CheckHttpService(checkTrue))
+	assert.Equal(t, false, CheckHttpService(checkFalse))
+
 }
 
-func (s *CheckerSuite) TestHttpServiceExpectHttpStatus(c *C) {
+func TestHttpServiceExpectHttpStatus(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.RequestURI == "/check" {
 			fmt.Fprintln(w, "OK")
@@ -80,11 +71,12 @@ func (s *CheckerSuite) TestHttpServiceExpectHttpStatus(c *C) {
 	checkTrue := ServiceCheck{Type: "http", Url: ts.URL + "/check", ExpectHttpStatus: "200"}
 	checkFalse := ServiceCheck{Type: "http", Url: ts.URL + "/notFound", ExpectHttpStatus: "404"}
 
-	c.Assert(CheckHttpService(checkTrue), Equals, true)
-	c.Assert(CheckHttpService(checkFalse), Equals, true)
+	assert.Equal(t, true, CheckHttpService(checkTrue))
+	assert.Equal(t, true, CheckHttpService(checkFalse))
+
 }
 
-func (s *CheckerSuite) TestHttpServiceExpectHttpString(c *C) {
+func TestHttpServiceExpectHttpString(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.RequestURI == "/returnOK" {
 			fmt.Fprintln(w, "OK")
@@ -97,14 +89,14 @@ func (s *CheckerSuite) TestHttpServiceExpectHttpString(c *C) {
 	checkTrue := ServiceCheck{Type: "http", Url: ts.URL + "/returnOK", ExpectString: "OK"}
 	checkFalse := ServiceCheck{Type: "http", Url: ts.URL + "/returnFoobar", ExpectString: "OK"}
 
-	c.Assert(CheckHttpService(checkTrue), Equals, true)
-	c.Assert(CheckHttpService(checkFalse), Equals, false)
+	assert.Equal(t, true, CheckHttpService(checkTrue))
+	assert.Equal(t, false, CheckHttpService(checkFalse))
 }
 
-func (s *CheckerSuite) TestHttpServiceNotResponding(c *C) {
+func TestHttpServiceNotResponding(t *testing.T) {
 	checkFalse := ServiceCheck{Type: "http", Url: "http://localhost:10/returnFoobar", ExpectString: "OK"}
 
-	c.Assert(CheckHttpService(checkFalse), Equals, false)
+	assert.Equal(t, false, CheckHttpService(checkFalse))
 }
 
 type TestConfigResultPublisher struct {
@@ -116,7 +108,7 @@ func (c TestConfigResultPublisher) PublishServiceState(serviceName string, endpo
 	}
 }
 
-func (s *CheckerSuite) TestCheckConfigUpdateWorker(c *C) {
+func TestCheckConfigUpdateWorker(t *testing.T) {
 
 	configurations := make(chan MachineConfiguration)
 	resultsChannel := make(chan OrbitEvent, 1)
@@ -144,12 +136,11 @@ func (s *CheckerSuite) TestCheckConfigUpdateWorker(c *C) {
 	result := (<-resultsChannel).Ptr.(ServiceStateEvent)
 	close(configurations)
 
-	c.Assert(result.Service, Equals, "myService")
-	c.Assert(result.IsUp, Equals, true)
+	assert.Equal(t, "myService", result.Service)
+	assert.Equal(t, true, result.IsUp)
 }
 
-func (s *CheckerSuite) TestCheckConfigUpdateWorkerWhenServiceIsRemoved(c *C) {
-	fmt.Println("********* TestCheckConfigUpdateWorkerWhenServiceIsRemoved start ")
+func TestCheckConfigUpdateWorkerWhenServiceIsRemoved(t *testing.T) {
 
 	configurations := make(chan MachineConfiguration, 1)
 	resultsChannel := make(chan OrbitEvent, 1)
@@ -185,8 +176,7 @@ func (s *CheckerSuite) TestCheckConfigUpdateWorkerWhenServiceIsRemoved(c *C) {
 	close(configurations)
 	result := (<-resultsChannel).Ptr.(ServiceStateEvent)
 
-	c.Assert(result.Service, Equals, "myService")
-	c.Assert(result.IsUp, Equals, true)
-	fmt.Println("********* TestCheckConfigUpdateWorkerWhenServiceIsRemoved end ")
+	assert.Equal(t, "myService", result.Service)
+	assert.Equal(t, true, result.IsUp)
 
 }

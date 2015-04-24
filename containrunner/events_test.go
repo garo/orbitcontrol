@@ -1,40 +1,35 @@
 package containrunner
 
 import (
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"testing"
 	"time"
 )
 
-type EventsSuite struct {
-	queuer RabbitMQQueuer
-}
-
-var _ = Suite(&EventsSuite{})
-
-func (s *EventsSuite) TestNewEvent(c *C) {
+func TestNewEvent(t *testing.T) {
 
 	e := NewOrbitEvent(NoopEvent{"test"})
 
-	c.Assert(e.Type, Equals, "NoopEvent")
-	c.Assert(e.Ptr.(NoopEvent).Data, Equals, "test")
+	assert.Equal(t, "NoopEvent", e.Type, "NoopEvent")
+	assert.Equal(t, "test", e.Ptr.(NoopEvent).Data)
 }
 
-func (s *EventsSuite) TestEventToStr(c *C) {
+func TestEventToStr(t *testing.T) {
 
 	e := NewOrbitEvent(NoopEvent{"test"})
 	str := e.String()
 
-	c.Assert(str, Equals, "{\"Ts\":\""+e.Ts.Format(time.RFC3339Nano)+"\",\"Type\":\"NoopEvent\",\"Event\":{\"Data\":\"test\"}}")
+	assert.Equal(t, "{\"Ts\":\""+e.Ts.Format(time.RFC3339Nano)+"\",\"Type\":\"NoopEvent\",\"Event\":{\"Data\":\"test\"}}", str)
 }
 
-func (s *EventsSuite) TestNewOrbitEventFromString(c *C) {
+func TestNewOrbitEventFromString(t *testing.T) {
 
 	str := "{\"Ts\":\"2015-01-28T08:29:56.381443454Z\",\"Type\":\"NoopEvent\",\"Event\":{\"Data\":\"test\"}}"
 
 	e, err := NewOrbitEventFromString(str)
-	c.Assert(err, Equals, nil)
-	c.Assert(e.Ts.Format(time.RFC3339Nano), Equals, "2015-01-28T08:29:56.381443454Z")
-	c.Assert(e.Type, Equals, "NoopEvent")
-	c.Assert(e.Ptr.(NoopEvent).Data, Equals, "test")
+	assert.Nil(t, err)
+	assert.Equal(t, e.Ts.Format(time.RFC3339Nano), "2015-01-28T08:29:56.381443454Z")
+	assert.Equal(t, e.Type, "NoopEvent")
+	assert.Equal(t, e.Ptr.(NoopEvent).Data, "test")
 
 }

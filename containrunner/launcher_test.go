@@ -3,33 +3,17 @@ package containrunner
 import (
 	"fmt"
 	"github.com/fsouza/go-dockerclient"
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
-//import "github.com/stretchr/testify/mock"
-
-// Hook up gocheck into the "go test" runner.
-func Test(t *testing.T) { TestingT(t) }
-
-type MySuite struct {
-	client *docker.Client
-}
-
-var _ = Suite(&MySuite{})
-
-func (s *MySuite) SetUpTest(c *C) {
-	s.client = GetDockerClient()
-	c.Assert(s.client, Not(IsNil))
-}
-
-func (s *MySuite) TestGetServiceConfigurationString(c *C) {
+func TestGetServiceConfigurationString(t *testing.T) {
 
 	var str = GetServiceConfigurationString()
-	c.Assert(str, Not(IsNil))
+	assert.NotNil(t, str)
 }
 
-func (s *MySuite) TestGetContainerImageNameWithRevision(c *C) {
+func TestGetContainerImageNameWithRevision(t *testing.T) {
 	var required_service ServiceConfiguration
 	required_service.Container = new(ContainerConfiguration)
 	required_service.Revision = new(ServiceRevision)
@@ -37,47 +21,49 @@ func (s *MySuite) TestGetContainerImageNameWithRevision(c *C) {
 	required_service.Revision.Revision = "asdfasdfasdf"
 	revision := GetContainerImageNameWithRevision(required_service, "")
 
-	c.Assert(revision, Equals, "registry.applifier.info:5000/comet:asdfasdfasdf")
+	assert.Equal(t, "registry.applifier.info:5000/comet:asdfasdfasdf", revision)
 
 	required_service.Revision.Revision = ""
 	revision = GetContainerImageNameWithRevision(required_service, "")
-	c.Assert(revision, Equals, "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2")
+	assert.Equal(t, "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2", revision)
 
 	required_service.Revision.Revision = "asdf"
 	revision = GetContainerImageNameWithRevision(required_service, "foobar")
-	c.Assert(revision, Equals, "registry.applifier.info:5000/comet:foobar")
+	assert.Equal(t, "registry.applifier.info:5000/comet:foobar", revision)
 
 	required_service.Revision = nil
 	revision = GetContainerImageNameWithRevision(required_service, "")
-	c.Assert(revision, Equals, "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2")
+	assert.Equal(t, "registry.applifier.info:5000/comet:874559764c3d841f3c45cf3ecdb6ecfa3eb19dd2", revision)
 
 	required_service.Revision = nil
 	required_service.Container.Config.Image = "registry.applifier.info:5000/comet"
 	revision = GetContainerImageNameWithRevision(required_service, "")
-	c.Assert(revision, Equals, "registry.applifier.info:5000/comet:latest")
+	assert.Equal(t, "registry.applifier.info:5000/comet:latest", revision)
 
 	required_service.Revision = nil
 	required_service.Container.Config.Image = "ubuntu"
 	revision = GetContainerImageNameWithRevision(required_service, "")
-	c.Assert(revision, Equals, "ubuntu:latest")
+	assert.Equal(t, "ubuntu:latest", revision)
 
 	required_service.Revision = nil
 	required_service.Container.Config.Image = "ubuntu:latest"
 	revision = GetContainerImageNameWithRevision(required_service, "")
-	c.Assert(revision, Equals, "ubuntu:latest")
+	assert.Equal(t, "ubuntu:latest", revision)
 
 }
 
-func (s *MySuite) TestConvergeContainers(c *C) {
+func TestConvergeContainers(t *testing.T) {
+
+	client := GetDockerClient()
 
 	var containrunner Containrunner
 	conf, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
 	fmt.Printf("***** TestConvergeContainers\n")
-	ConvergeContainers(conf.MachineConfigurations["testtag"], false, s.client)
+	ConvergeContainers(conf.MachineConfigurations["testtag"], false, client)
 
 }
 
-func (s *MySuite) TestFindMatchingContainers_AllMatch(c *C) {
+func TestFindMatchingContainers_AllMatch(t *testing.T) {
 	var ec = make([]ContainerDetails, 1, 1)
 	ec[0].Container = new(docker.Container)
 	ec[0].Container.Config = new(docker.Config)
@@ -93,11 +79,11 @@ func (s *MySuite) TestFindMatchingContainers_AllMatch(c *C) {
 
 	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
 
-	c.Assert(len(found_containers), Equals, 1)
-	c.Assert(len(remaining_containers), Equals, 0)
+	assert.Equal(t, 1, len(found_containers))
+	assert.Equal(t, 0, len(remaining_containers))
 }
 
-func (s *MySuite) TestFindMatchingContaineres_Hostname_Mismatch(c *C) {
+func TestFindMatchingContaineres_Hostname_Mismatch(t *testing.T) {
 	var ec = make([]ContainerDetails, 1, 1)
 	ec[0].Container = new(docker.Container)
 	ec[0].Container.Config = new(docker.Config)
@@ -113,11 +99,11 @@ func (s *MySuite) TestFindMatchingContaineres_Hostname_Mismatch(c *C) {
 
 	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
 
-	c.Assert(len(found_containers), Equals, 0)
-	c.Assert(len(remaining_containers), Equals, 1)
+	assert.Equal(t, 0, len(found_containers))
+	assert.Equal(t, 1, len(remaining_containers))
 }
 
-func (s *MySuite) TestFindMatchingContaineres_Name_Mismatch(c *C) {
+func TestFindMatchingContaineres_Name_Mismatch(t *testing.T) {
 	var ec = make([]ContainerDetails, 1, 1)
 	ec[0].Container = new(docker.Container)
 	ec[0].Container.Config = new(docker.Config)
@@ -133,11 +119,11 @@ func (s *MySuite) TestFindMatchingContaineres_Name_Mismatch(c *C) {
 
 	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
 
-	c.Assert(len(found_containers), Equals, 0)
-	c.Assert(len(remaining_containers), Equals, 1)
+	assert.Equal(t, 0, len(found_containers))
+	assert.Equal(t, 1, len(remaining_containers))
 }
 
-func (s *MySuite) TestFindMatchingContaineres_Env_Match(c *C) {
+func TestFindMatchingContaineres_Env_Match(t *testing.T) {
 	var ec = make([]ContainerDetails, 1, 1)
 	ec[0].Container = new(docker.Container)
 	ec[0].Container.Config = new(docker.Config)
@@ -155,11 +141,11 @@ func (s *MySuite) TestFindMatchingContaineres_Env_Match(c *C) {
 
 	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
 
-	c.Assert(len(found_containers), Equals, 1)
-	c.Assert(len(remaining_containers), Equals, 0)
+	assert.Equal(t, 1, len(found_containers))
+	assert.Equal(t, 0, len(remaining_containers))
 }
 
-func (s *MySuite) TestFindMatchingContaineres_Env_Match2(c *C) {
+func TestFindMatchingContaineres_Env_Match2(t *testing.T) {
 	var ec = make([]ContainerDetails, 1, 1)
 	ec[0].Container = new(docker.Container)
 	ec[0].Container.Config = new(docker.Config)
@@ -177,11 +163,11 @@ func (s *MySuite) TestFindMatchingContaineres_Env_Match2(c *C) {
 
 	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
 
-	c.Assert(len(found_containers), Equals, 1)
-	c.Assert(len(remaining_containers), Equals, 0)
+	assert.Equal(t, 1, len(found_containers))
+	assert.Equal(t, 0, len(remaining_containers))
 }
 
-func (s *MySuite) TestFindMatchingContaineres_Env_Match3(c *C) {
+func TestFindMatchingContaineres_Env_Match3(t *testing.T) {
 	var ec = make([]ContainerDetails, 1, 1)
 	ec[0].Container = new(docker.Container)
 	ec[0].Container.Config = new(docker.Config)
@@ -198,11 +184,12 @@ func (s *MySuite) TestFindMatchingContaineres_Env_Match3(c *C) {
 
 	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
 
-	c.Assert(len(found_containers), Equals, 1)
-	c.Assert(len(remaining_containers), Equals, 0)
+	assert.Equal(t, 1, len(found_containers))
+	assert.Equal(t, 0, len(remaining_containers))
+
 }
 
-func (s *MySuite) TestFindMatchingContaineres_Env_Mismatch(c *C) {
+func TestFindMatchingContaineres_Env_Mismatch(t *testing.T) {
 	var ec = make([]ContainerDetails, 1, 1)
 	ec[0].Container = new(docker.Container)
 	ec[0].Container.Config = new(docker.Config)
@@ -220,11 +207,11 @@ func (s *MySuite) TestFindMatchingContaineres_Env_Mismatch(c *C) {
 
 	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
 
-	c.Assert(len(found_containers), Equals, 0)
-	c.Assert(len(remaining_containers), Equals, 1)
+	assert.Equal(t, 0, len(found_containers))
+	assert.Equal(t, 1, len(remaining_containers))
 }
 
-func (s *MySuite) TestFindMatchingContaineres_Env_Mismatch2(c *C) {
+func TestFindMatchingContaineres_Env_Mismatch2(t *testing.T) {
 	var ec = make([]ContainerDetails, 1, 1)
 	ec[0].Container = new(docker.Container)
 	ec[0].Container.Config = new(docker.Config)
@@ -242,11 +229,11 @@ func (s *MySuite) TestFindMatchingContaineres_Env_Mismatch2(c *C) {
 
 	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
 
-	c.Assert(len(found_containers), Equals, 0)
-	c.Assert(len(remaining_containers), Equals, 1)
+	assert.Equal(t, 0, len(found_containers))
+	assert.Equal(t, 1, len(remaining_containers))
 }
 
-func (s *MySuite) TestFindMatchingContaineres_Env_Mismatch4(c *C) {
+func TestFindMatchingContaineres_Env_Mismatch4(t *testing.T) {
 	var ec = make([]ContainerDetails, 1, 1)
 	ec[0].Container = new(docker.Container)
 	ec[0].Container.Config = new(docker.Config)
@@ -263,11 +250,11 @@ func (s *MySuite) TestFindMatchingContaineres_Env_Mismatch4(c *C) {
 
 	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
 
-	c.Assert(len(found_containers), Equals, 0)
-	c.Assert(len(remaining_containers), Equals, 1)
+	assert.Equal(t, 0, len(found_containers))
+	assert.Equal(t, 1, len(remaining_containers))
 }
 
-func (s *MySuite) TestFindMatchingContaineres_Env_Mismatch5(c *C) {
+func TestFindMatchingContaineres_Env_Mismatch5(t *testing.T) {
 	var ec = make([]ContainerDetails, 1, 1)
 	ec[0].Container = new(docker.Container)
 	ec[0].Container.Config = new(docker.Config)
@@ -284,10 +271,11 @@ func (s *MySuite) TestFindMatchingContaineres_Env_Mismatch5(c *C) {
 
 	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
 
-	c.Assert(len(found_containers), Equals, 0)
-	c.Assert(len(remaining_containers), Equals, 1)
+	assert.Equal(t, 0, len(found_containers))
+	assert.Equal(t, 1, len(remaining_containers))
 }
-func (s *MySuite) TestFindMatchingContaineres_Revision_Mismatch(c *C) {
+
+func TestFindMatchingContaineres_Revision_Mismatch(t *testing.T) {
 	var ec = make([]ContainerDetails, 1, 1)
 	ec[0].Container = new(docker.Container)
 	ec[0].Container.Config = new(docker.Config)
@@ -300,6 +288,7 @@ func (s *MySuite) TestFindMatchingContaineres_Revision_Mismatch(c *C) {
 	required_service.Revision.Revision = "asdfasdfasdf"
 	found_containers, remaining_containers := FindMatchingContainers(ec, required_service)
 
-	c.Assert(len(found_containers), Equals, 0)
-	c.Assert(len(remaining_containers), Equals, 1)
+	assert.Equal(t, 0, len(found_containers))
+	assert.Equal(t, 1, len(remaining_containers))
+
 }

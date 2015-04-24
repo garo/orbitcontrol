@@ -1,6 +1,7 @@
 package containrunner
 
 import (
+	"fmt"
 	"github.com/nu7hatch/gouuid"
 	"reflect"
 	"runtime"
@@ -87,6 +88,7 @@ func (cc *CommandController) command(name string, f CommandFunction, argument in
 	cc.commands[command.Id] = command
 	cc.lock.Unlock()
 
+	fmt.Printf("Going to execute command %s\n", name)
 	go func() {
 		err := f(argument)
 		cc.lock.Lock()

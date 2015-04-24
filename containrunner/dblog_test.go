@@ -4,59 +4,71 @@ import (
 	"database/sql"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
 	"os"
+	"testing"
 	"time"
 )
 
-type DbLogSuite struct {
+type DbLogTestContext struct {
 	db    *sql.DB
 	dbLog DbLog
 }
 
-var _ = Suite(&DbLogSuite{})
-
-func (s *DbLogSuite) SetUpTest(c *C) {
+func GetMySQLTestContext() (*DbLogTestContext, error) {
+	s := DbLogTestContext{}
 	db := os.Getenv("GO_TEST_MYSQL")
 	if db != "" {
 		fmt.Printf("mysql setup test")
 		handle, err := sql.Open("mysql", db)
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
 		s.db = handle
 
 		err = s.db.Ping()
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
 
 		s.dbLog.table_prefix = "test"
 		err = s.dbLog.Init(db)
 		if err != nil {
 			log.Error(fmt.Sprintf("Error on dbLog.Init. err: %+v", err))
+			return nil, err
 		}
 		err = s.dbLog.PrepareSchema()
-		c.Assert(err, Equals, nil)
+		if err != nil {
+			return nil, err
+		}
 		fmt.Printf("mysql setup test 2")
 
 		_, err = s.db.Exec("DELETE FROM test_deployment_events")
-		c.Assert(err, Equals, nil)
+		if err != nil {
+			return nil, err
+		}
 		fmt.Printf("mysql setup test 3")
+
+		return &s, nil
 
 	} else {
 		log.Error("GO_TEST_MYSQL env variable not set, skipping dblog tests")
+		return nil, nil
 	}
 }
 
-func (s *DbLogSuite) TestDbExists(c *C) {
-	if s.db != nil {
-		c.Assert(s.db.Ping(), Equals, nil)
+func TestDbExists(t *testing.T) {
+	s, err := GetMySQLTestContext()
+	assert.Nil(t, err)
+	if s != nil {
+		assert.Nil(t, s.db.Ping())
 	}
 }
 
-func (s *DbLogSuite) TestCanStoreDeploymentEventToDatabase(c *C) {
-	if s.db != nil {
+func TestCanStoreDeploymentEventToDatabase(t *testing.T) {
+	s, err := GetMySQLTestContext()
+	assert.Nil(t, err)
+	if s != nil {
 
 		e := DeploymentEvent{
 			"action",
@@ -68,16 +80,16 @@ func (s *DbLogSuite) TestCanStoreDeploymentEventToDatabase(c *C) {
 		}
 
 		stored_id, err := s.dbLog.StoreDeploymentEvent(e, time.Now())
-		c.Assert(err, Equals, nil)
+		assert.Nil(t, err)
 		var id int
 		var action, service, revision, machine_address, user string
 		err = s.db.QueryRow("SELECT id,action,service,revision,machine_address,user FROM test_deployment_events WHERE id = ?", stored_id).Scan(&id, &action, &service, &revision, &machine_address, &user)
-		c.Assert(err, Equals, nil)
-		c.Assert(action, Equals, "action")
-		c.Assert(service, Equals, "service name")
-		c.Assert(revision, Equals, "revision id")
-		c.Assert(user, Equals, "user name")
-		c.Assert(user, Equals, "user name")
-		c.Assert(machine_address, Equals, "machine address")
+		assert.Nil(t, err)
+		assert.Equal(t, action, "action")
+		assert.Equal(t, service, "service name")
+		assert.Equal(t, revision, "revision id")
+		assert.Equal(t, user, "user name")
+		assert.Equal(t, user, "user name")
+		assert.Equal(t, machine_address, "machine address")
 	}
 }

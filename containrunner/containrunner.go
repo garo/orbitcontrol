@@ -233,7 +233,7 @@ func (s *Containrunner) HandleDeploymentEvent(e DeploymentEvent) {
 }
 
 func (s *Containrunner) HandleServiceStateEvent(e ServiceStateEvent, etcdClient *etcd.Client) {
-	//log.Debug("ServiceStateEvent %+v", e)
+	log.Debug("ServiceStateEvent %+v", e)
 
 	if configResultPublisher == nil {
 		configResultPublisher = &ConfigResultEtcdPublisher{10, s.EtcdBasePath, s.EtcdEndpoints, etcdClient}

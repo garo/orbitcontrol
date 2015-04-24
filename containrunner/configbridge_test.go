@@ -4,34 +4,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/coreos/go-etcd/etcd"
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"testing"
 )
-
-type ConfigBridgeSuite struct {
-	etcd *etcd.Client
-}
-
-var _ = Suite(&ConfigBridgeSuite{})
 
 var TestingEtcdEndpoints []string = []string{"http://etcd:4001"}
 
-func (s *ConfigBridgeSuite) SetUpTest(c *C) {
-	s.etcd = etcd.NewClient(TestingEtcdEndpoints)
-	s.etcd.RawDelete("/test/", true, true)
-
-}
-
-func (s *ConfigBridgeSuite) TestLoadOrbitConfigurationFromFiles(c *C) {
+func TestLoadOrbitConfigurationFromFiles(t *testing.T) {
 	var ct Containrunner
 
 	orbitConfiguration, err := ct.LoadOrbitConfigurationFromFiles("/Development/go/src/github.com/garo/orbitcontrol/testdata")
-	c.Assert(err, IsNil)
+	assert.Nil(t, err)
 
-	c.Assert(orbitConfiguration.GlobalOrbitProperties.AMQPUrl, Equals, "amqp://guest:guest@localhost:5672/")
+	assert.Equal(t, "amqp://guest:guest@localhost:5672/", orbitConfiguration.GlobalOrbitProperties.AMQPUrl)
 
-	c.Assert(orbitConfiguration.MachineConfigurations["testtag"].HAProxyConfiguration, Not(IsNil))
+	assert.NotNil(t, orbitConfiguration.MachineConfigurations["testtag"].HAProxyConfiguration)
 
-	c.Assert(orbitConfiguration.MachineConfigurations["testtag"].HAProxyConfiguration.Template, Equals,
+	assert.Equal(t,
 		"global\n"+
 			"stats socket /var/run/haproxy/admin.sock level admin user haproxy group haproxy\n"+
 			"\tlog 127.0.0.1\tlocal2 info\n"+
@@ -54,62 +43,64 @@ func (s *ConfigBridgeSuite) TestLoadOrbitConfigurationFromFiles(c *C) {
 			"\tcontimeout 5000\n"+
 			"\tclitimeout 60000\n"+
 			"\tsrvtimeout 60000\n"+
-			"\n")
+			"\n", orbitConfiguration.MachineConfigurations["testtag"].HAProxyConfiguration.Template)
 
-	c.Assert(orbitConfiguration.MachineConfigurations["testtag"].HAProxyConfiguration.Files["500.http"], Equals,
+	assert.Equal(t,
 		`HTTP/1.0 500 Service Unavailable
 Cache-Control: no-cache
 Connection: close
 Content-Type: text/html
 
-`)
+`, orbitConfiguration.MachineConfigurations["testtag"].HAProxyConfiguration.Files["500.http"])
 
-	fmt.Printf("TEST: %+v\n", orbitConfiguration.MachineConfigurations["testtag"].Services["dashboards"])
+	assert.NotNil(t, orbitConfiguration.MachineConfigurations["testtag"].Services["ubuntu"])
+	assert.Equal(t, "ubuntu", orbitConfiguration.MachineConfigurations["testtag"].AuthoritativeNames[0])
 
-	c.Assert(orbitConfiguration.MachineConfigurations["testtag"].Services["ubuntu"], Not(IsNil))
-	c.Assert(orbitConfiguration.MachineConfigurations["testtag"].AuthoritativeNames[0], Equals, "ubuntu")
-
-	c.Assert(orbitConfiguration.Services["ubuntu"].Name, Equals, "ubuntu")
-	c.Assert(orbitConfiguration.Services["ubuntu"].EndpointPort, Equals, 3500)
-	c.Assert(orbitConfiguration.Services["ubuntu"].Checks[0].Type, Equals, "http")
+	assert.Equal(t, "ubuntu", orbitConfiguration.Services["ubuntu"].Name)
+	assert.Equal(t, 3500, orbitConfiguration.Services["ubuntu"].EndpointPort)
+	assert.Equal(t, "http", orbitConfiguration.Services["ubuntu"].Checks[0].Type)
 
 }
 
-func (s *ConfigBridgeSuite) TestUploadOrbitConfigurationToEtcd(c *C) {
+func TestUploadOrbitConfigurationToEtcd(t *testing.T) {
+	etcd := etcd.NewClient(TestingEtcdEndpoints)
+	defer etcd.Close()
+	etcd.RawDelete("/test/", true, true)
+
 	var ct Containrunner
 	ct.EtcdBasePath = "/test"
 
 	orbitConfiguration, err := ct.LoadOrbitConfigurationFromFiles("/Development/go/src/github.com/garo/orbitcontrol/testdata")
-	c.Assert(err, IsNil)
+	assert.Nil(t, err)
 
-	s.etcd.DeleteDir("/test/")
+	etcd.DeleteDir("/test/")
 
-	err = ct.UploadOrbitConfigurationToEtcd(orbitConfiguration, s.etcd)
-	c.Assert(err, IsNil)
+	err = ct.UploadOrbitConfigurationToEtcd(orbitConfiguration, etcd)
+	assert.Nil(t, err)
 
-	res, err := s.etcd.Get("/test/globalproperties", true, true)
-	c.Assert(err, IsNil)
+	res, err := etcd.Get("/test/globalproperties", true, true)
+	assert.Nil(t, err)
 	var gop GlobalOrbitProperties
 	err = json.Unmarshal([]byte(res.Node.Value), &gop)
-	c.Assert(gop.AMQPUrl, Equals, `amqp://guest:guest@localhost:5672/`)
+	assert.Equal(t, `amqp://guest:guest@localhost:5672/`, gop.AMQPUrl)
 
-	res, err = s.etcd.Get("/test/machineconfigurations/tags/testtag/haproxy_files/500.http", true, true)
-	c.Assert(err, IsNil)
-	c.Assert(res.Node.Value, Equals, `HTTP/1.0 500 Service Unavailable
+	res, err = etcd.Get("/test/machineconfigurations/tags/testtag/haproxy_files/500.http", true, true)
+	assert.Nil(t, err)
+	assert.Equal(t, `HTTP/1.0 500 Service Unavailable
 Cache-Control: no-cache
 Connection: close
 Content-Type: text/html
 
-`)
+`, res.Node.Value)
 
-	res, err = s.etcd.Get("/test/machineconfigurations/tags/testtag/authoritative_names", true, true)
-	c.Assert(err, IsNil)
-	c.Assert(res.Node.Value, Equals, "[\"ubuntu\"]")
+	res, err = etcd.Get("/test/machineconfigurations/tags/testtag/authoritative_names", true, true)
+	assert.Nil(t, err)
+	assert.Equal(t, "[\"ubuntu\"]", res.Node.Value)
 
-	res, err = s.etcd.Get("/test/machineconfigurations/tags/testtag/haproxy_config", true, true)
-	c.Assert(err, IsNil)
+	res, err = etcd.Get("/test/machineconfigurations/tags/testtag/haproxy_config", true, true)
+	assert.Nil(t, err)
 
-	c.Assert(res.Node.Value, Equals,
+	assert.Equal(t,
 		"global\n"+
 			"stats socket /var/run/haproxy/admin.sock level admin user haproxy group haproxy\n"+
 			"\tlog 127.0.0.1\tlocal2 info\n"+
@@ -132,71 +123,83 @@ Content-Type: text/html
 			"\tcontimeout 5000\n"+
 			"\tclitimeout 60000\n"+
 			"\tsrvtimeout 60000\n"+
-			"\n")
+			"\n", res.Node.Value)
 
-	res, err = s.etcd.Get("/test/services/ubuntu/config", true, true)
-	c.Assert(err, IsNil)
-	c.Assert(res.Node.Value, Equals, "{\"Name\":\"ubuntu\",\"EndpointPort\":3500,\"Checks\":[{\"Type\":\"http\",\"Url\":\"http://127.0.0.1:3500/check\",\"HttpHost\":\"\",\"Username\":\"\",\"Password\":\"\",\"HostPort\":\"\",\"DummyResult\":false,\"ExpectHttpStatus\":\"\",\"ExpectString\":\"\",\"ConnectTimeout\":0,\"ResponseTimeout\":0,\"Delay\":0}],\"Container\":{\"HostConfig\":{\"Binds\":[\"/tmp:/data\"],\"NetworkMode\":\"host\",\"RestartPolicy\":{},\"LogConfig\":{}},\"Config\":{\"Env\":[\"NODE_ENV=vagrant\"],\"Image\":\"ubuntu\"}},\"Revision\":null,\"SourceControl\":{\"Origin\":\"github.com/Applifier/ubuntu\",\"OAuthToken\":\"\",\"CIUrl\":\"\"},\"Attributes\":{}}")
+	res, err = etcd.Get("/test/services/ubuntu/config", true, true)
+	assert.Nil(t, err)
+	assert.Equal(t, res.Node.Value, "{\"Name\":\"ubuntu\",\"EndpointPort\":3500,\"Checks\":[{\"Type\":\"http\",\"Url\":\"http://127.0.0.1:3500/check\",\"HttpHost\":\"\",\"Username\":\"\",\"Password\":\"\",\"HostPort\":\"\",\"DummyResult\":false,\"ExpectHttpStatus\":\"\",\"ExpectString\":\"\",\"ConnectTimeout\":0,\"ResponseTimeout\":0,\"Delay\":0}],\"Container\":{\"HostConfig\":{\"Binds\":[\"/tmp:/data\"],\"NetworkMode\":\"host\",\"RestartPolicy\":{},\"LogConfig\":{}},\"Config\":{\"Env\":[\"NODE_ENV=vagrant\"],\"Image\":\"ubuntu\"}},\"Revision\":null,\"SourceControl\":{\"Origin\":\"github.com/Applifier/ubuntu\",\"OAuthToken\":\"\",\"CIUrl\":\"\"},\"Attributes\":{}}")
 
-	res, err = s.etcd.Get("/test/machineconfigurations/tags/testtag/services/ubuntu", true, true)
-	c.Assert(err, IsNil)
+	res, err = etcd.Get("/test/machineconfigurations/tags/testtag/services/ubuntu", true, true)
+	assert.Nil(t, err)
 
 	expected := "{\"Name\":\"\",\"EndpointPort\":0,\"Checks\":null,\"Container\":{\"HostConfig\":{\"RestartPolicy\":{},\"LogConfig\":{}},\"Config\":{\"Hostname\":\"ubuntu-test\",\"Env\":[\"NODE_ENV=staging\"],\"Image\":\"ubuntu\"}},\"Revision\":null,\"SourceControl\":null,\"Attributes\":null}"
-	c.Assert(res.Node.Value, Equals, expected)
+	assert.Equal(t, expected, res.Node.Value)
 
 }
 
-func (s *ConfigBridgeSuite) TestGetGlobalOrbitProperties(c *C) {
+func TestGetGlobalOrbitProperties(t *testing.T) {
+	etcd := etcd.NewClient(TestingEtcdEndpoints)
+	defer etcd.Close()
+	etcd.RawDelete("/test/", true, true)
+
 	var ct Containrunner
 	ct.EtcdBasePath = "/test"
 
 	gop := GlobalOrbitProperties{}
 	gop.AMQPUrl = "amqp://guest:guest@localhost:5672/"
 	bytes, _ := json.Marshal(gop)
-	_, err := s.etcd.Set("/test/globalproperties", string(bytes), 10)
+	_, err := etcd.Set("/test/globalproperties", string(bytes), 10)
 
-	gop, err = ct.GetGlobalOrbitProperties(s.etcd)
-	c.Assert(err, IsNil)
-	c.Assert(gop.AMQPUrl, Equals, `amqp://guest:guest@localhost:5672/`)
+	gop, err = ct.GetGlobalOrbitProperties(etcd)
+	assert.Nil(t, err)
+	assert.Equal(t, `amqp://guest:guest@localhost:5672/`, gop.AMQPUrl)
 
 }
 
-func (s *ConfigBridgeSuite) TestUploadOrbitConfigurationToEtcdWhichRemovesAService(c *C) {
+func TestUploadOrbitConfigurationToEtcdWhichRemovesAService(t *testing.T) {
+	etcd := etcd.NewClient(TestingEtcdEndpoints)
+	defer etcd.Close()
+	etcd.RawDelete("/test/", true, true)
+
 	var ct Containrunner
 	ct.EtcdBasePath = "/test"
 
 	orbitConfiguration, err := ct.LoadOrbitConfigurationFromFiles("/Development/go/src/github.com/garo/orbitcontrol/testdata")
-	c.Assert(err, IsNil)
+	assert.Nil(t, err)
 
-	s.etcd.DeleteDir("/test/")
+	etcd.DeleteDir("/test/")
 
-	err = ct.UploadOrbitConfigurationToEtcd(orbitConfiguration, s.etcd)
-	c.Assert(err, IsNil)
+	err = ct.UploadOrbitConfigurationToEtcd(orbitConfiguration, etcd)
+	assert.Nil(t, err)
 
 	// Verify that this service exists before we try to delete it in the second step
-	res, err := s.etcd.Get("/test/services/ubuntu/config", true, true)
-	c.Assert(err, IsNil)
-	c.Assert(res.Node.Value, Equals, "{\"Name\":\"ubuntu\",\"EndpointPort\":3500,\"Checks\":[{\"Type\":\"http\",\"Url\":\"http://127.0.0.1:3500/check\",\"HttpHost\":\"\",\"Username\":\"\",\"Password\":\"\",\"HostPort\":\"\",\"DummyResult\":false,\"ExpectHttpStatus\":\"\",\"ExpectString\":\"\",\"ConnectTimeout\":0,\"ResponseTimeout\":0,\"Delay\":0}],\"Container\":{\"HostConfig\":{\"Binds\":[\"/tmp:/data\"],\"NetworkMode\":\"host\",\"RestartPolicy\":{},\"LogConfig\":{}},\"Config\":{\"Env\":[\"NODE_ENV=vagrant\"],\"Image\":\"ubuntu\"}},\"Revision\":null,\"SourceControl\":{\"Origin\":\"github.com/Applifier/ubuntu\",\"OAuthToken\":\"\",\"CIUrl\":\"\"},\"Attributes\":{}}")
+	res, err := etcd.Get("/test/services/ubuntu/config", true, true)
+	assert.Nil(t, err)
+	assert.Equal(t, "{\"Name\":\"ubuntu\",\"EndpointPort\":3500,\"Checks\":[{\"Type\":\"http\",\"Url\":\"http://127.0.0.1:3500/check\",\"HttpHost\":\"\",\"Username\":\"\",\"Password\":\"\",\"HostPort\":\"\",\"DummyResult\":false,\"ExpectHttpStatus\":\"\",\"ExpectString\":\"\",\"ConnectTimeout\":0,\"ResponseTimeout\":0,\"Delay\":0}],\"Container\":{\"HostConfig\":{\"Binds\":[\"/tmp:/data\"],\"NetworkMode\":\"host\",\"RestartPolicy\":{},\"LogConfig\":{}},\"Config\":{\"Env\":[\"NODE_ENV=vagrant\"],\"Image\":\"ubuntu\"}},\"Revision\":null,\"SourceControl\":{\"Origin\":\"github.com/Applifier/ubuntu\",\"OAuthToken\":\"\",\"CIUrl\":\"\"},\"Attributes\":{}}", res.Node.Value)
 
 	orbitConfiguration, err = ct.LoadOrbitConfigurationFromFiles("/Development/go/src/github.com/garo/orbitcontrol/testdata")
-	c.Assert(err, IsNil)
+	assert.Nil(t, err)
 
 	// Delete the service from the orbitConfiguration...
 	delete(orbitConfiguration.MachineConfigurations["testtag"].Services, "ubuntu")
 
 	// ...so it should be deleted by the following UploadOrbitConfigurationToEtcd call
-	err = ct.UploadOrbitConfigurationToEtcd(orbitConfiguration, s.etcd)
-	c.Assert(err, IsNil)
+	err = ct.UploadOrbitConfigurationToEtcd(orbitConfiguration, etcd)
+	assert.Nil(t, err)
 
-	res, err = s.etcd.Get("/test/machineconfigurations/tags/testtag/services/ubuntu", true, true)
+	res, err = etcd.Get("/test/machineconfigurations/tags/testtag/services/ubuntu", true, true)
 	fmt.Printf("removed service error: %+v\n", err)
 	fmt.Printf("removed service res: %+v\n", res)
 
-	c.Assert(err, Not(IsNil))
+	assert.NotNil(t, err)
 
 }
 
-func (s *ConfigBridgeSuite) TestMergeServiceConfig(c *C) {
+func TestMergeServiceConfig(t *testing.T) {
+	etcd := etcd.NewClient(TestingEtcdEndpoints)
+	defer etcd.Close()
+	etcd.RawDelete("/test/", true, true)
+
 	defaults := new(ServiceConfiguration)
 	overwrite := new(ServiceConfiguration)
 
@@ -262,24 +265,27 @@ func (s *ConfigBridgeSuite) TestMergeServiceConfig(c *C) {
 
 	merged := MergeServiceConfig(*defaults, *overwrite)
 
-	c.Assert(merged.Name, Equals, "ubuntu")
-	c.Assert(merged.EndpointPort, Equals, 8002)
-	c.Assert(merged.Container.HostConfig.Binds[0], Equals, "/tmp:/data")
-	c.Assert(merged.Container.Config.Env[0], Equals, "FOO=BAR")
-	c.Assert(merged.Container.Config.Env[1], Equals, "NODE_ENV=staging")
-	c.Assert(merged.Container.Config.Image, Equals, "ubuntu")
-	c.Assert(merged.Container.Config.Hostname, Equals, "ubuntu-test")
-	c.Assert(merged.Checks[0].Type, Equals, "http")
-	c.Assert(merged.Checks[0].Url, Equals, "http://localhost:8002/check")
-	c.Assert(merged.Attributes["foo"], Equals, "bar")
+	assert.Equal(t, merged.Name, "ubuntu")
+	assert.Equal(t, merged.EndpointPort, 8002)
+	assert.Equal(t, merged.Container.HostConfig.Binds[0], "/tmp:/data")
+	assert.Equal(t, merged.Container.Config.Env[0], "FOO=BAR")
+	assert.Equal(t, merged.Container.Config.Env[1], "NODE_ENV=staging")
+	assert.Equal(t, merged.Container.Config.Image, "ubuntu")
+	assert.Equal(t, merged.Container.Config.Hostname, "ubuntu-test")
+	assert.Equal(t, merged.Checks[0].Type, "http")
+	assert.Equal(t, merged.Checks[0].Url, "http://localhost:8002/check")
+	assert.Equal(t, merged.Attributes["foo"], "bar")
 
 }
 
-func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTags(c *C) {
+func TestGetMachineConfigurationByTags(t *testing.T) {
+	etcd := etcd.NewClient(TestingEtcdEndpoints)
+	defer etcd.Close()
+	etcd.RawDelete("/test/", true, true)
 
-	_, err := s.etcd.CreateDir("/machineconfigurations/tags/testtag/", 10)
+	_, err := etcd.CreateDir("/machineconfigurations/tags/testtag/", 10)
 	if err != nil {
-		s.etcd.DeleteDir("/machineconfigurations/tags/testtag/")
+		etcd.DeleteDir("/machineconfigurations/tags/testtag/")
 	}
 
 	var ubuntu = `
@@ -312,74 +318,63 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTags(c *C) {
 	]
 }
 `
-	_, err = s.etcd.Set("/services/ubuntu/config", ubuntu, 10)
-	if err != nil {
-		panic(err)
-	}
+	_, err = etcd.Set("/services/ubuntu/config", ubuntu, 10)
+	assert.Nil(t, err)
 
 	revision := `
 {
 	"Revision" : "asdf"
 }`
 
-	_, err = s.etcd.Set("/services/ubuntu/revision", revision, 10)
-	if err != nil {
-		panic(err)
-	}
+	_, err = etcd.Set("/services/ubuntu/revision", revision, 10)
+	assert.Nil(t, err)
 
-	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/services/ubuntu", ``, 10)
-	if err != nil {
-		panic(err)
-	}
+	_, err = etcd.Set("/machineconfigurations/tags/testtag/services/ubuntu", ``, 10)
+	assert.Nil(t, err)
 
-	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/authoritative_names", `["ubuntu"]`, 10)
-	if err != nil {
-		panic(err)
-	}
+	_, err = etcd.Set("/machineconfigurations/tags/testtag/authoritative_names", `["ubuntu"]`, 10)
+	assert.Nil(t, err)
 
-	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/haproxy_config", "foobar", 10)
-	if err != nil {
-		panic(err)
-	}
+	_, err = etcd.Set("/machineconfigurations/tags/testtag/haproxy_config", "foobar", 10)
+	assert.Nil(t, err)
 
-	_, err = s.etcd.CreateDir("/machineconfigurations/tags/testtag/haproxy_files", 10)
-	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/haproxy_files/hello.txt", "hello", 10)
-	if err != nil {
-		panic(err)
-	}
+	_, err = etcd.CreateDir("/machineconfigurations/tags/testtag/haproxy_files", 10)
+	_, err = etcd.Set("/machineconfigurations/tags/testtag/haproxy_files/hello.txt", "hello", 10)
+	assert.Nil(t, err)
 
-	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/certs/test.pem", "----TEST-----", 10)
-	if err != nil {
-		panic(err)
-	}
+	_, err = etcd.Set("/machineconfigurations/tags/testtag/certs/test.pem", "----TEST-----", 10)
+	assert.Nil(t, err)
 
 	tags := []string{"testtag"}
 	var containrunner Containrunner
 
-	configuration, err := containrunner.GetMachineConfigurationByTags(s.etcd, tags, "")
-	c.Assert(configuration.Services["ubuntu"].GetConfig().Name, Equals, "ubuntu")
-	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.HostConfig.NetworkMode, Equals, "host")
-	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.Config.AttachStderr, Equals, false)
-	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.Config.Hostname, Equals, "ubuntu")
-	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.Config.Image, Equals, "ubuntu")
-	c.Assert(configuration.Services["ubuntu"].GetConfig().Checks[0].Type, Equals, "http")
-	c.Assert(configuration.Services["ubuntu"].GetConfig().Checks[0].Url, Equals, "http://localhost:3500/check")
+	configuration, err := containrunner.GetMachineConfigurationByTags(etcd, tags, "")
+	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Name, "ubuntu")
+	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Container.HostConfig.NetworkMode, "host")
+	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Container.Config.AttachStderr, false)
+	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Container.Config.Hostname, "ubuntu")
+	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Container.Config.Image, "ubuntu")
+	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Checks[0].Type, "http")
+	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Checks[0].Url, "http://localhost:3500/check")
 
-	c.Assert(configuration.HAProxyConfiguration.Template, Equals, "foobar")
-	c.Assert(configuration.HAProxyConfiguration.Certs["test.pem"], Equals, "----TEST-----")
-	c.Assert(configuration.HAProxyConfiguration.Files["hello.txt"], Equals, "hello")
+	assert.Equal(t, configuration.HAProxyConfiguration.Template, "foobar")
+	assert.Equal(t, configuration.HAProxyConfiguration.Certs["test.pem"], "----TEST-----")
+	assert.Equal(t, configuration.HAProxyConfiguration.Files["hello.txt"], "hello")
 
-	c.Assert(configuration.Services["ubuntu"].GetConfig().Revision.Revision, Equals, "asdf")
+	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Revision.Revision, "asdf")
 
-	_, _ = s.etcd.DeleteDir("/machineconfigurations/tags/testtag/")
+	_, _ = etcd.DeleteDir("/machineconfigurations/tags/testtag/")
 
 }
 
-func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTagsWithOverwrittenParameters(c *C) {
+func TestGetMachineConfigurationByTagsWithOverwrittenParameters(t *testing.T) {
+	etcd := etcd.NewClient(TestingEtcdEndpoints)
+	defer etcd.Close()
+	etcd.RawDelete("/test/", true, true)
 
-	_, err := s.etcd.CreateDir("/machineconfigurations/tags/testtag/", 10)
+	_, err := etcd.CreateDir("/machineconfigurations/tags/testtag/", 10)
 	if err != nil {
-		s.etcd.DeleteDir("/machineconfigurations/tags/testtag/")
+		etcd.DeleteDir("/machineconfigurations/tags/testtag/")
 	}
 
 	var ubuntu = `
@@ -412,22 +407,18 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTagsWithOverwrittenPara
 	]
 }
 `
-	_, err = s.etcd.Set("/services/ubuntu/config", ubuntu, 10)
-	if err != nil {
-		panic(err)
-	}
+	_, err = etcd.Set("/services/ubuntu/config", ubuntu, 10)
+	assert.Nil(t, err)
 
 	revision := `
 {
 	"Revision" : "asdf"
 }`
 
-	_, err = s.etcd.Set("/services/ubuntu/revision", revision, 10)
-	if err != nil {
-		panic(err)
-	}
+	_, err = etcd.Set("/services/ubuntu/revision", revision, 10)
+	assert.Nil(t, err)
 
-	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/services/ubuntu", `
+	_, err = etcd.Set("/machineconfigurations/tags/testtag/services/ubuntu", `
 {
 	"Container" : {
 		"Config": {
@@ -437,232 +428,247 @@ func (s *ConfigBridgeSuite) TestGetMachineConfigurationByTagsWithOverwrittenPara
 		}
 	}
 }`, 10)
-	if err != nil {
-		panic(err)
-	}
+	assert.Nil(t, err)
 
-	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/authoritative_names", `["ubuntu"]`, 10)
-	if err != nil {
-		panic(err)
-	}
+	_, err = etcd.Set("/machineconfigurations/tags/testtag/authoritative_names", `["ubuntu"]`, 10)
+	assert.Nil(t, err)
 
-	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/haproxy_config", "foobar", 10)
-	if err != nil {
-		panic(err)
-	}
+	_, err = etcd.Set("/machineconfigurations/tags/testtag/haproxy_config", "foobar", 10)
+	assert.Nil(t, err)
 
-	_, err = s.etcd.CreateDir("/machineconfigurations/tags/testtag/haproxy_files", 10)
-	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/haproxy_files/hello.txt", "hello", 10)
-	if err != nil {
-		panic(err)
-	}
+	_, err = etcd.CreateDir("/machineconfigurations/tags/testtag/haproxy_files", 10)
+	_, err = etcd.Set("/machineconfigurations/tags/testtag/haproxy_files/hello.txt", "hello", 10)
+	assert.Nil(t, err)
 
-	_, err = s.etcd.Set("/machineconfigurations/tags/testtag/certs/test.pem", "----TEST-----", 10)
-	if err != nil {
-		panic(err)
-	}
+	_, err = etcd.Set("/machineconfigurations/tags/testtag/certs/test.pem", "----TEST-----", 10)
+	assert.Nil(t, err)
 
 	tags := []string{"testtag"}
 	var containrunner Containrunner
-	configuration, err := containrunner.GetMachineConfigurationByTags(s.etcd, tags, "")
+	configuration, err := containrunner.GetMachineConfigurationByTags(etcd, tags, "")
 
-	c.Assert(configuration.Services["ubuntu"].GetConfig().Name, Equals, "ubuntu")
-	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.HostConfig.NetworkMode, Equals, "host")
-	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.Config.AttachStderr, Equals, false)
-	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.Config.Env[0], Equals, "NODE_ENV=staging")
-	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.Config.Hostname, Equals, "ubuntu")
-	c.Assert(configuration.Services["ubuntu"].GetConfig().Container.Config.Image, Equals, "ubuntu")
-	c.Assert(configuration.Services["ubuntu"].GetConfig().Checks[0].Type, Equals, "http")
-	c.Assert(configuration.Services["ubuntu"].GetConfig().Checks[0].Url, Equals, "http://localhost:3500/check")
+	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Name, "ubuntu")
+	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Container.HostConfig.NetworkMode, "host")
+	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Container.Config.AttachStderr, false)
+	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Container.Config.Env[0], "NODE_ENV=staging")
+	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Container.Config.Hostname, "ubuntu")
+	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Container.Config.Image, "ubuntu")
+	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Checks[0].Type, "http")
+	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Checks[0].Url, "http://localhost:3500/check")
 
-	c.Assert(configuration.HAProxyConfiguration.Template, Equals, "foobar")
-	c.Assert(configuration.HAProxyConfiguration.Certs["test.pem"], Equals, "----TEST-----")
-	c.Assert(configuration.HAProxyConfiguration.Files["hello.txt"], Equals, "hello")
+	assert.Equal(t, configuration.HAProxyConfiguration.Template, "foobar")
+	assert.Equal(t, configuration.HAProxyConfiguration.Certs["test.pem"], "----TEST-----")
+	assert.Equal(t, configuration.HAProxyConfiguration.Files["hello.txt"], "hello")
 
-	c.Assert(configuration.Services["ubuntu"].GetConfig().Revision.Revision, Equals, "asdf")
+	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Revision.Revision, "asdf")
 
-	_, _ = s.etcd.DeleteDir("/machineconfigurations/tags/testtag/")
+	_, _ = etcd.DeleteDir("/machineconfigurations/tags/testtag/")
 
 }
-func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherServiceOk(c *C) {
+func TestConfigResultEtcdPublisherServiceOk(t *testing.T) {
+	etcd := etcd.NewClient(TestingEtcdEndpoints)
+	defer etcd.Close()
+	etcd.RawDelete("/test/", true, true)
 
-	crep := ConfigResultEtcdPublisher{5, "/test", nil, s.etcd}
+	crep := ConfigResultEtcdPublisher{5, "/test", nil, etcd}
 	crep.PublishServiceState("testService", "10.1.2.3:1234", true, nil)
 
-	res, err := s.etcd.Get("/test/services/testService/endpoints/10.1.2.3:1234", false, false)
-	if err != nil {
-		panic(err)
-	}
-	c.Assert(res.Node.Value, Equals, "null")
+	res, err := etcd.Get("/test/services/testService/endpoints/10.1.2.3:1234", false, false)
+	assert.Nil(t, err)
+	assert.Equal(t, res.Node.Value, "null")
 
 	// Note that TTL counts down to zero, so if the machine is under heavy load then the TTL might not be anymore 5
-	c.Assert(res.Node.TTL, Equals, int64(5))
+	assert.Equal(t, res.Node.TTL, int64(5))
 
-	_, _ = s.etcd.DeleteDir("/test/services/testService/endpoints/10.1.2.3:1234")
+	_, _ = etcd.DeleteDir("/test/services/testService/endpoints/10.1.2.3:1234")
 }
 
-func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherServiceWithEndpointInfo(c *C) {
+func TestConfigResultEtcdPublisherServiceWithEndpointInfo(t *testing.T) {
+	etcd := etcd.NewClient(TestingEtcdEndpoints)
+	defer etcd.Close()
+	etcd.RawDelete("/test/", true, true)
 
-	crep := ConfigResultEtcdPublisher{5, "/test", nil, s.etcd}
+	crep := ConfigResultEtcdPublisher{5, "/test", nil, etcd}
 	crep.PublishServiceState("testService", "10.1.2.3:1234", true, &EndpointInfo{
 		Revision: "asdf",
 	})
 
-	res, err := s.etcd.Get("/test/services/testService/endpoints/10.1.2.3:1234", false, false)
-	if err != nil {
-		panic(err)
-	}
+	res, err := etcd.Get("/test/services/testService/endpoints/10.1.2.3:1234", false, false)
+	assert.Nil(t, err)
+
 	endpointInfo := EndpointInfo{}
 	err = json.Unmarshal([]byte(res.Node.Value), &endpointInfo)
-	c.Assert(err, IsNil)
-	c.Assert(endpointInfo.Revision, Equals, "asdf")
+	assert.Nil(t, err)
+	assert.Equal(t, endpointInfo.Revision, "asdf")
 
 	// Note that TTL counts down to zero, so if the machine is under heavy load then the TTL might not be anymore 5
-	c.Assert(res.Node.TTL, Equals, int64(5))
+	assert.Equal(t, res.Node.TTL, int64(5))
 
-	_, _ = s.etcd.DeleteDir("/test/services/testService/endpoints/10.1.2.3:1234")
+	_, _ = etcd.DeleteDir("/test/services/testService/endpoints/10.1.2.3:1234")
 }
 
-func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherServiceNotOk(c *C) {
+func TestConfigResultEtcdPublisherServiceNotOk(t *testing.T) {
+	etcd := etcd.NewClient(TestingEtcdEndpoints)
+	defer etcd.Close()
+	etcd.RawDelete("/test/", true, true)
 
-	crep := ConfigResultEtcdPublisher{5, "/test", nil, s.etcd}
+	crep := ConfigResultEtcdPublisher{5, "/test", nil, etcd}
 	crep.PublishServiceState("testService", "10.1.2.3:1234", false, nil)
 
-	_, err := s.etcd.Get("/test/services/testService/endpoints/10.1.2.3:1234", false, false)
-	c.Assert(err, Not(IsNil))
+	_, err := etcd.Get("/test/services/testService/endpoints/10.1.2.3:1234", false, false)
+	assert.NotNil(t, err)
 }
 
-func (s *ConfigBridgeSuite) TestConfigResultEtcdPublisherWithPreviousExistingValue(c *C) {
+func TestConfigResultEtcdPublisherWithPreviousExistingValue(t *testing.T) {
+	etcd := etcd.NewClient(TestingEtcdEndpoints)
+	defer etcd.Close()
+	etcd.RawDelete("/test/", true, true)
 
-	crep := ConfigResultEtcdPublisher{5, "/test", nil, s.etcd}
+	crep := ConfigResultEtcdPublisher{5, "/test", nil, etcd}
 	crep.PublishServiceState("testService", "10.1.2.3:1234", true, nil)
 	crep.PublishServiceState("testService", "10.1.2.3:1234", true, nil)
-	_, _ = s.etcd.DeleteDir("/test/services/testService/endpoints/0.1.2.3:1234")
+	_, _ = etcd.DeleteDir("/test/services/testService/endpoints/0.1.2.3:1234")
 
 }
 
-func (s *ConfigBridgeSuite) TestGetEndpointsForService(c *C) {
+func TestGetEndpointsForService(t *testing.T) {
+	etcd := etcd.NewClient(TestingEtcdEndpoints)
+	defer etcd.Close()
+	etcd.RawDelete("/test/", true, true)
 
-	_, err := s.etcd.Set("/test/services/testService2/endpoints/10.1.2.3:1234", "{\"Revision\":\"foobar\"}", 10)
-	if err != nil {
-		panic(err)
-	}
+	_, err := etcd.Set("/test/services/testService2/endpoints/10.1.2.3:1234", "{\"Revision\":\"foobar\"}", 10)
+	assert.Nil(t, err)
 
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test"
 	containrunner.EtcdEndpoints = TestingEtcdEndpoints
 	endpoints, err := containrunner.GetEndpointsForService("testService2")
-	c.Assert(err, IsNil)
+	assert.Nil(t, err)
 
-	c.Assert(endpoints["10.1.2.3:1234"].Revision, Equals, "foobar")
+	assert.Equal(t, endpoints["10.1.2.3:1234"].Revision, "foobar")
 
 }
 
-func (s *ConfigBridgeSuite) TestGetAllEndpoints(c *C) {
+func TestGetAllEndpoints(t *testing.T) {
+	etcd := etcd.NewClient(TestingEtcdEndpoints)
+	defer etcd.Close()
+	etcd.RawDelete("/test/", true, true)
 
-	_, err := s.etcd.Set("/test/services/testService2/endpoints/10.1.2.3:1234", "{\"Revision\":\"foo\"}", 10)
-	c.Assert(err, IsNil)
-	_, err = s.etcd.Set("/test/services/testService2/endpoints/10.1.2.4:1234", "{\"Revision\":\"bar\"}", 10)
-	c.Assert(err, IsNil)
-	_, err = s.etcd.Set("/test/services/testService1/endpoints/10.1.2.4:1000", "{\"Revision\":\"kissa\"}", 10)
-	c.Assert(err, IsNil)
+	_, err := etcd.Set("/test/services/testService2/endpoints/10.1.2.3:1234", "{\"Revision\":\"foo\"}", 10)
+	assert.Nil(t, err)
+	_, err = etcd.Set("/test/services/testService2/endpoints/10.1.2.4:1234", "{\"Revision\":\"bar\"}", 10)
+	assert.Nil(t, err)
+	_, err = etcd.Set("/test/services/testService1/endpoints/10.1.2.4:1000", "{\"Revision\":\"kissa\"}", 10)
+	assert.Nil(t, err)
 
 	serviceEndpoints, err := GetAllServiceEndpoints(TestingEtcdEndpoints, "/test")
-	c.Assert(err, IsNil)
+	assert.Nil(t, err)
 
-	c.Assert(serviceEndpoints["testService1"]["10.1.2.4:1000"].Revision, Equals, "kissa")
-	c.Assert(serviceEndpoints["testService2"]["10.1.2.3:1234"].Revision, Equals, "foo")
-	c.Assert(serviceEndpoints["testService2"]["10.1.2.4:1234"].Revision, Equals, "bar")
+	assert.Equal(t, serviceEndpoints["testService1"]["10.1.2.4:1000"].Revision, "kissa")
+	assert.Equal(t, serviceEndpoints["testService2"]["10.1.2.3:1234"].Revision, "foo")
+	assert.Equal(t, serviceEndpoints["testService2"]["10.1.2.4:1234"].Revision, "bar")
 
 }
 
-func (s *ConfigBridgeSuite) TestGetAllServices(c *C) {
+func TestGetAllServices(t *testing.T) {
+	etcd := etcd.NewClient(TestingEtcdEndpoints)
+	defer etcd.Close()
+	etcd.RawDelete("/test/", true, true)
 
-	_, err := s.etcd.Set("/test/services/testService2/config", `{
+	_, err := etcd.Set("/test/services/testService2/config", `{
 "Name" : "testService2",
 "EndpointPort" : 1025
 }`, 10)
-	if err != nil {
-		panic(err)
-	}
+	assert.Nil(t, err)
 
 	var containrunner Containrunner
 	var services map[string]ServiceConfiguration
 	containrunner.EtcdBasePath = "/test"
-	services, err = containrunner.GetAllServices(s.etcd)
-	c.Assert(err, IsNil)
+	services, err = containrunner.GetAllServices(etcd)
+	assert.Nil(t, err)
 
-	c.Assert(services["testService2"].Name, Equals, "testService2")
-	c.Assert(services["testService2"].EndpointPort, Equals, 1025)
+	assert.Equal(t, services["testService2"].Name, "testService2")
+	assert.Equal(t, services["testService2"].EndpointPort, 1025)
 
 }
 
-func (s *ConfigBridgeSuite) TestTagServiceToTag(c *C) {
+func TestTagServiceToTag(t *testing.T) {
+	etcd := etcd.NewClient(TestingEtcdEndpoints)
+	defer etcd.Close()
+	etcd.RawDelete("/test/", true, true)
 
-	_, _ = s.etcd.Delete("/test/machineconfigurations/tags/testtag/services/myservice", true)
+	_, _ = etcd.Delete("/test/machineconfigurations/tags/testtag/services/myservice", true)
 
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test"
-	err := containrunner.TagServiceToTag("myservice", "testtag", s.etcd)
-	c.Assert(err, IsNil)
+	err := containrunner.TagServiceToTag("myservice", "testtag", etcd)
+	assert.Nil(t, err)
 
-	res, err := s.etcd.Get("/test/machineconfigurations/tags/testtag/services/myservice", false, false)
-	if err != nil {
-		panic(err)
-	}
-	c.Assert(res.Node.Value, Equals, "{}")
+	res, err := etcd.Get("/test/machineconfigurations/tags/testtag/services/myservice", false, false)
+	assert.Nil(t, err)
+	assert.Equal(t, res.Node.Value, "{}")
 
-	_, _ = s.etcd.Delete("/test/machineconfigurations/tags/testtag/services/myservice", true)
+	_, _ = etcd.Delete("/test/machineconfigurations/tags/testtag/services/myservice", true)
 
 }
 
-func (s *ConfigBridgeSuite) TestGetServiceRevision(c *C) {
+func TestGetServiceRevision(t *testing.T) {
+	etcd := etcd.NewClient(TestingEtcdEndpoints)
+	defer etcd.Close()
+	etcd.RawDelete("/test/", true, true)
 
-	s.etcd.Delete("/test/services/myservice/revision", true)
-	s.etcd.Set("/test/services/myservice/revision", `
+	etcd.Delete("/test/services/myservice/revision", true)
+	etcd.Set("/test/services/myservice/revision", `
 {
 	"Revision" : "asdfasdf"
 }`, 10)
 
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test"
-	serviceRevision, err := containrunner.GetServiceRevision("myservice", s.etcd)
-	c.Assert(err, IsNil)
-	c.Assert(serviceRevision.Revision, Equals, "asdfasdf")
+	serviceRevision, err := containrunner.GetServiceRevision("myservice", etcd)
+	assert.Nil(t, err)
+	assert.Equal(t, serviceRevision.Revision, "asdfasdf")
 
-	s.etcd.Delete("/test/services/myservice/revision", true)
+	etcd.Delete("/test/services/myservice/revision", true)
 
 }
 
-func (s *ConfigBridgeSuite) TestGetServiceByName(c *C) {
-	s.etcd.Delete("/test/services/myservice/revision", true)
-	s.etcd.Set("/test/services/myservice/revision", `
+func TestGetServiceByName(t *testing.T) {
+	etcd := etcd.NewClient(TestingEtcdEndpoints)
+	defer etcd.Close()
+	etcd.RawDelete("/test/", true, true)
+
+	etcd.Delete("/test/services/myservice/revision", true)
+	etcd.Set("/test/services/myservice/revision", `
 {
 	"Revision" : "asdfasdf"
 }`, 10)
 
-	s.etcd.Delete("/test/services/myservice/machines", true)
-	s.etcd.Set("/test/services/myservice/machines/10.0.0.1", `
+	etcd.Delete("/test/services/myservice/machines", true)
+	etcd.Set("/test/services/myservice/machines/10.0.0.1", `
 {
 	"Revision" : "newrevision"
 }`, 10)
 
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test"
-	serviceConfiguration, err := containrunner.GetServiceByName("myservice", s.etcd, "10.0.0.1")
-	c.Assert(err, IsNil)
-	c.Assert(serviceConfiguration.Revision.Revision, Equals, "newrevision")
+	serviceConfiguration, err := containrunner.GetServiceByName("myservice", etcd, "10.0.0.1")
+	assert.Nil(t, err)
+	assert.Equal(t, serviceConfiguration.Revision.Revision, "newrevision")
 
-	s.etcd.Delete("/test/services/myservice/revision", true)
-	s.etcd.Delete("/test/services/myservice/machines/10.0.0.1", true)
-	s.etcd.Delete("/test/services/myservice/machines", true)
+	etcd.Delete("/test/services/myservice/revision", true)
+	etcd.Delete("/test/services/myservice/machines/10.0.0.1", true)
+	etcd.Delete("/test/services/myservice/machines", true)
 
 }
 
-func (s *ConfigBridgeSuite) TestSetServiceRevision(c *C) {
+func TestSetServiceRevision(t *testing.T) {
+	etcd := etcd.NewClient(TestingEtcdEndpoints)
+	defer etcd.Close()
+	etcd.RawDelete("/test/", true, true)
 
-	s.etcd.Delete("/test/services/myservice/revision", true)
-	s.etcd.Set("/test/services/myservice/machines/10.0.0.1", `
+	etcd.Delete("/test/services/myservice/revision", true)
+	etcd.Set("/test/services/myservice/machines/10.0.0.1", `
 {
 	"Revision" : "newrevision"
 }`, 10)
@@ -675,28 +681,29 @@ func (s *ConfigBridgeSuite) TestSetServiceRevision(c *C) {
 	}
 	var serviceRevision2 ServiceRevision
 
-	err := containrunner.SetServiceRevision("myservice", serviceRevision, s.etcd)
-	c.Assert(err, IsNil)
+	err := containrunner.SetServiceRevision("myservice", serviceRevision, etcd)
+	assert.Nil(t, err)
 
-	res, err := s.etcd.Get("/test/services/myservice/revision", false, false)
-	if err != nil {
-		panic(err)
-	}
+	res, err := etcd.Get("/test/services/myservice/revision", false, false)
+	assert.Nil(t, err)
 
 	err = json.Unmarshal([]byte(res.Node.Value), &serviceRevision2)
-	c.Assert(err, IsNil)
+	assert.Nil(t, err)
 
-	c.Assert(serviceRevision2.Revision, Equals, "asdf")
+	assert.Equal(t, serviceRevision2.Revision, "asdf")
 
-	res, err = s.etcd.Get("/test/services/myservice/machines/10.0.0.1", false, false)
-	c.Assert(err, Not(IsNil))
+	res, err = etcd.Get("/test/services/myservice/machines/10.0.0.1", false, false)
+	assert.NotNil(t, err)
 
-	s.etcd.Delete("/test/services/myservice/revision", true)
+	etcd.Delete("/test/services/myservice/revision", true)
 }
 
-func (s *ConfigBridgeSuite) TestSetServiceRevisionForMachine(c *C) {
+func TestSetServiceRevisionForMachine(t *testing.T) {
+	etcd := etcd.NewClient(TestingEtcdEndpoints)
+	defer etcd.Close()
+	etcd.RawDelete("/test/", true, true)
 
-	s.etcd.Delete("/test/services/myservice/machines", true)
+	etcd.Delete("/test/services/myservice/machines", true)
 
 	var containrunner Containrunner
 	containrunner.EtcdBasePath = "/test"
@@ -706,18 +713,16 @@ func (s *ConfigBridgeSuite) TestSetServiceRevisionForMachine(c *C) {
 	}
 	var serviceRevision2 ServiceRevision
 
-	err := containrunner.SetServiceRevisionForMachine("myservice", serviceRevision, "10.0.0.2", s.etcd)
-	c.Assert(err, IsNil)
+	err := containrunner.SetServiceRevisionForMachine("myservice", serviceRevision, "10.0.0.2", etcd)
+	assert.Nil(t, err)
 
-	res, err := s.etcd.Get("/test/services/myservice/machines/10.0.0.2", false, false)
-	if err != nil {
-		panic(err)
-	}
+	res, err := etcd.Get("/test/services/myservice/machines/10.0.0.2", false, false)
+	assert.Nil(t, err)
 
 	err = json.Unmarshal([]byte(res.Node.Value), &serviceRevision2)
-	c.Assert(err, IsNil)
+	assert.Nil(t, err)
 
-	c.Assert(serviceRevision2.Revision, Equals, "asdf")
+	assert.Equal(t, serviceRevision2.Revision, "asdf")
 
-	s.etcd.Delete("/test/services/myservice/machines", true)
+	etcd.Delete("/test/services/myservice/machines", true)
 }

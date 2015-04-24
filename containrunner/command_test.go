@@ -2,15 +2,11 @@ package containrunner
 
 import (
 	"fmt"
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"testing"
 )
 
-type CommandSuite struct {
-}
-
-var _ = Suite(&CommandSuite{})
-
-func (s *CommandSuite) TestInvokeCommand(c *C) {
+func TestInvokeCommand(t *testing.T) {
 
 	cc := CommandController{}
 
@@ -24,17 +20,18 @@ func (s *CommandSuite) TestInvokeCommand(c *C) {
 	}
 
 	command, err := cc.Invoke(f, nil)
-	c.Assert(err, Equals, nil)
+	assert.Nil(t, err)
 
 	fmt.Printf("UUID: %s, name: %s\n", command.Id, command.Name)
 
 	err = command.Wait()
-	c.Assert(err, Equals, nil)
-	c.Assert(called, Equals, true)
+	fmt.Printf("command wait done. err: %+v\n", err)
+	assert.Nil(t, err)
+	assert.Equal(t, true, called)
 
 }
 
-func (s *CommandSuite) TestInvokeNamedCommand(c *C) {
+func TestInvokeNamedCommand(t *testing.T) {
 
 	cc := CommandController{}
 
@@ -43,11 +40,13 @@ func (s *CommandSuite) TestInvokeNamedCommand(c *C) {
 	}
 
 	command, err := cc.InvokeNamed("test", f, nil)
-	c.Assert(err, Equals, nil)
-	c.Assert(command.Name, Equals, "test")
+
+	assert.Nil(t, err)
+	assert.Equal(t, "test", command.Name)
+
 }
 
-func (s *CommandSuite) TestInvokeIfNotAlreadyRunning(c *C) {
+func TestInvokeIfNotAlreadyRunning(t *testing.T) {
 
 	cc := CommandController{}
 
@@ -58,27 +57,27 @@ func (s *CommandSuite) TestInvokeIfNotAlreadyRunning(c *C) {
 	}
 
 	command, err := cc.InvokeNamed("test", f, nil)
-	c.Assert(command, Not(Equals), nil)
-	c.Assert(err, Equals, nil)
-	c.Assert(command.Name, Equals, "test")
+	assert.NotNil(t, command)
+	assert.Nil(t, err)
+	assert.Equal(t, "test", command.Name)
 
-	c.Assert(true, Equals, cc.IsRunning("test"))
+	assert.Equal(t, true, cc.IsRunning("test"))
 
 	c2, err := cc.InvokeIfNotAlreadyRunning("test", f, nil)
-	c.Assert(err, Equals, nil)
-	c.Assert(c2, IsNil)
+	assert.Nil(t, err)
+	assert.Nil(t, c2)
 
 	cont <- nil
 	command.Wait()
-	c.Assert(false, Equals, cc.IsRunning("test"))
+	assert.Equal(t, false, cc.IsRunning("test"))
 
 	command, err = cc.InvokeIfNotAlreadyRunning("test", f, nil)
-	c.Assert(command, Not(IsNil))
-	c.Assert(err, IsNil)
-	c.Assert(true, Equals, cc.IsRunning("test"))
+	assert.NotNil(t, command)
+	assert.Nil(t, err)
+	assert.Equal(t, true, cc.IsRunning("test"))
 
 	cont <- nil
 	command.Wait()
-	c.Assert(false, Equals, cc.IsRunning("test"))
+	assert.Equal(t, false, cc.IsRunning("test"))
 
 }
