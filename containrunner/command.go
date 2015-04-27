@@ -1,7 +1,6 @@
 package containrunner
 
 import (
-	"fmt"
 	"github.com/nu7hatch/gouuid"
 	"reflect"
 	"runtime"
