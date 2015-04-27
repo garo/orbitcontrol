@@ -77,6 +77,8 @@ func (s *Containrunner) Init() {
 
 	s.webserver.Containrunner = s
 
+	s.webserver.Start(1500)
+
 	go s.EventHandler(incomingNetworkEvents, s.incomingLoopbackEvents)
 
 }
@@ -256,7 +258,7 @@ func (s *Containrunner) HandleServiceStateEvent(e ServiceStateEvent, etcdClient 
 	log.Debug("ServiceStateEvent %+v", e)
 
 	if configResultPublisher == nil {
-		configResultPublisher = &ConfigResultEtcdPublisher{10, s.EtcdBasePath, s.EtcdEndpoints, etcdClient}
+		configResultPublisher = &ConfigResultEtcdPublisher{60, s.EtcdBasePath, s.EtcdEndpoints, etcdClient}
 	}
 
 	// The etcd result publisher only wants to know when services are up.

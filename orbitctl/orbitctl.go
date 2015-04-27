@@ -11,6 +11,7 @@ import (
 	"github.com/garo/orbitcontrol/containrunner"
 	"github.com/op/go-logging"
 	stdlog "log"
+	_ "net/http/pprof"
 	"os"
 	"strings"
 	"text/tabwriter"

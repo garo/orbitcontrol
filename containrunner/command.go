@@ -73,7 +73,6 @@ func (cc *CommandController) InvokeIfNotAlreadyRunning(name string, f CommandFun
 
 }
 
-// This function does not use locks. Locking for the CommandController.lock must be done by the caller.
 func (cc *CommandController) command(name string, f CommandFunction, argument interface{}) (*Command, error) {
 	command := new(Command)
 	id, err := uuid.NewV4()
@@ -82,19 +81,20 @@ func (cc *CommandController) command(name string, f CommandFunction, argument in
 	}
 	command.Id = id.String()
 	command.Name = name
-	command.completed = make(chan error)
+	command.completed = make(chan error, 2)
 
 	cc.lock.Lock()
 	cc.commands[command.Id] = command
 	cc.lock.Unlock()
 
-	fmt.Printf("Going to execute command %s\n", name)
+	log.Info("Going to execute command %s with id %s\n", name, command.Id)
 	go func() {
 		err := f(argument)
 		cc.lock.Lock()
 		delete(cc.commands, command.Id)
 		cc.lock.Unlock()
 		command.completed <- err
+		log.Debug("command %s is now completed with is %s\n", name, command.Id)
 	}()
 
 	return command, nil

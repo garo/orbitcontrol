@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
 	"sync"
 	"time"
 )
@@ -63,6 +64,10 @@ func (ce *Webserver) Start(port int) error {
 	ce.server.Addr = fmt.Sprintf(":%d", port)
 	mux := http.NewServeMux()
 	ce.server.Handler = mux
+
+	go func() {
+		http.ListenAndServe("localhost:6060", nil)
+	}()
 
 	mux.HandleFunc("/check", ce.checkHandler)
 	mux.HandleFunc("/status", ce.statusHandler)
