@@ -217,7 +217,8 @@ func TestMergeServiceConfig(t *testing.T) {
 		"Config": {
 			"Env": [
 				"FOO=BAR",
-				"NODE_ENV=production"
+				"NODE_ENV=production",
+				"LDAP=dc=foo,dc=bar"
 			],
 			"AttachStderr": false,
 			"AttachStdin": false,
@@ -269,7 +270,8 @@ func TestMergeServiceConfig(t *testing.T) {
 	assert.Equal(t, merged.EndpointPort, 8002)
 	assert.Equal(t, merged.Container.HostConfig.Binds[0], "/tmp:/data")
 	assert.Equal(t, merged.Container.Config.Env[0], "FOO=BAR")
-	assert.Equal(t, merged.Container.Config.Env[1], "NODE_ENV=staging")
+	assert.Equal(t, merged.Container.Config.Env[2], "NODE_ENV=staging")
+	assert.Equal(t, merged.Container.Config.Env[1], "LDAP=dc=foo,dc=bar")
 	assert.Equal(t, merged.Container.Config.Image, "ubuntu")
 	assert.Equal(t, merged.Container.Config.Hostname, "ubuntu-test")
 	assert.Equal(t, merged.Checks[0].Type, "http")
@@ -349,6 +351,7 @@ func TestGetMachineConfigurationByTags(t *testing.T) {
 	var containrunner Containrunner
 
 	configuration, err := containrunner.GetMachineConfigurationByTags(etcd, tags, "")
+
 	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Name, "ubuntu")
 	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Container.HostConfig.NetworkMode, "host")
 	assert.Equal(t, configuration.Services["ubuntu"].GetConfig().Container.Config.AttachStderr, false)

@@ -95,7 +95,6 @@ func (s *Containrunner) EventHandler(incomingNetworkEvents <-chan OrbitEvent, in
 	etcdClient := GetEtcdClient(s.EtcdEndpoints)
 	defer etcdClient.Close()
 
-	log.Info("EventHandler main loop started")
 	for {
 		select {
 		case val, ok := <-s.exitChannel:
@@ -206,7 +205,7 @@ func (s *Containrunner) HandleConvergeContainersEvent(e ConvergeContainersEvent)
 		f := func(arguments interface{}) error {
 			docker := GetDockerClient()
 			configuration := arguments.(MachineConfiguration)
-			log.Info("Converging containers with configuration")
+			//log.Info("Converging containers with configuration")
 			//log.Info("Converging containers with configuration: %+v", configuration)
 
 			err := ConvergeContainers(configuration, true, docker)

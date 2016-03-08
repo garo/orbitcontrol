@@ -685,12 +685,12 @@ func MergeServiceConfig(dst ServiceConfiguration, overwrite ServiceConfiguration
 					env := make(map[string]string)
 					for _, e := range dst.Container.Config.Env {
 						parts := strings.Split(e, "=")
-						env[parts[0]] = parts[1]
+						env[parts[0]] = strings.Join(parts[1:], "=")
 					}
 
 					for _, e := range overwrite.Container.Config.Env {
 						parts := strings.Split(e, "=")
-						env[parts[0]] = parts[1]
+						env[parts[0]] = strings.Join(parts[1:], "=")
 					}
 
 					dst.Container.Config.Env = make([]string, len(env))

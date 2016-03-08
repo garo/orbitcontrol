@@ -213,7 +213,7 @@ func ConvergeContainers(conf MachineConfiguration, preDelay bool, client *docker
 					//log.Info(LogEvent(ContainerLogEvent{"stop-and-remove", container.Container.Image, container.Container.Name}))
 
 					log.Debug("Found container %s (%s) which we are authoritative but its running. Going to stop it...\n", container.APIContainers.ID, container.APIContainers.Image)
-					client.StopContainer(container.Container.ID, 10)
+					client.StopContainer(container.Container.ID, 40)
 					err = client.RemoveContainer(docker.RemoveContainerOptions{container.Container.ID, true, true})
 					if err != nil {
 						log.Panic(err)
@@ -453,7 +453,7 @@ func LaunchContainer(name string, imageName string, container *ContainerConfigur
 	if image == nil {
 		for tries := 0; ; tries++ {
 			if preDelay == true {
-				delay := rand.Intn(15) + 1
+				delay := rand.Intn(40) + 1
 				fmt.Printf("Sleeping %d seconds before pulling image %s\n", delay, imageName)
 				time.Sleep(time.Second * time.Duration(delay))
 			}
@@ -479,7 +479,7 @@ func LaunchContainer(name string, imageName string, container *ContainerConfigur
 				}
 				fmt.Printf("Could not pull new image, possibly the registry is overloaded. Trying again soon. This was try %d\n%+v\n", tries, err)
 
-				time.Sleep(time.Second * time.Duration(rand.Intn(30)+5))
+				time.Sleep(time.Second * time.Duration(rand.Intn(60)+5))
 			} else {
 				break
 			}
