@@ -59,7 +59,7 @@ func TestConvergeContainers(t *testing.T) {
 	var containrunner Containrunner
 	conf, _ := containrunner.LoadOrbitConfigurationFromFiles("../testdata")
 	fmt.Printf("***** TestConvergeContainers\n")
-	ConvergeContainers(conf.MachineConfigurations["testtag"], false, client)
+	ConvergeContainers(conf.MachineConfigurations["testtag"], false, false, client)
 
 }
 

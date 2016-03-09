@@ -25,6 +25,7 @@ type Containrunner struct {
 	Docker                 *docker.Client
 	incomingLoopbackEvents chan OrbitEvent
 	DisableAMQP            bool
+	NoSleep                bool
 	CommandController      CommandController
 	CheckEngine            CheckEngine
 	lastConverge           time.Time
@@ -163,7 +164,7 @@ func (s *Containrunner) DispatchEvent(receiveredEvent OrbitEvent, etcdClient *et
 		log.Debug("Got NoopEvent %+v\n", receiveredEvent)
 		break
 	case "DeploymentEvent":
-		log.Info("Event: %s", receiveredEvent.Type)
+		//log.Info("Event: %s", receiveredEvent.Type)
 
 		go s.HandleDeploymentEvent(receiveredEvent.Ptr.(DeploymentEvent))
 		break
@@ -208,7 +209,7 @@ func (s *Containrunner) HandleConvergeContainersEvent(e ConvergeContainersEvent)
 			//log.Info("Converging containers with configuration")
 			//log.Info("Converging containers with configuration: %+v", configuration)
 
-			err := ConvergeContainers(configuration, true, docker)
+			err := ConvergeContainers(configuration, true, !s.NoSleep, docker)
 
 			if err == nil {
 				// This must be done after the containers have been converged so that the Check Engine
@@ -246,6 +247,8 @@ func (s *Containrunner) HandleDeploymentEvent(e DeploymentEvent) {
 			}
 
 		}()
+		break
+	case "AutomaticRelaunch":
 		break
 	default:
 		log.Warning("DeploymentEvent action %s is not implemented", e.Action)
@@ -298,12 +301,15 @@ func (s *Containrunner) HandleServiceStateEvent(e ServiceStateEvent, etcdClient 
 				if err != nil {
 					log.Error("Error destroying container for relaunch: %+v", err)
 				}
+				log.Debug("Container %s has been destroyed", name)
 
-				time.Sleep(2 * time.Minute)
+				time.Sleep(1 * time.Minute)
 				log.Debug("Grace period over for service %s relaunch", name)
 				return err
 			}
 			s.CommandController.InvokeIfNotAlreadyRunning(name, f, e.Service)
+		} else {
+
 		}
 	}
 

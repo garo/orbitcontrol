@@ -103,6 +103,11 @@ func main() {
 			Usage:  "Disable amqp",
 			EnvVar: "ORBITCTL_DISABLE_AMQP",
 		},
+		cli.BoolFlag{
+			Name:   "nosleep",
+			Usage:  "Disable sleep before container start",
+			EnvVar: "ORBITCTL_NO_SLEEP",
+		},
 		etcdBasePathFlag,
 		etcdEndpointFlag,
 	}
@@ -130,6 +135,10 @@ func main() {
 		if c.IsSet("disable-amqp") {
 			log.Info("Disabling AMQP due to --disable-amqp option")
 			containrunnerInstance.DisableAMQP = true
+		}
+
+		if c.IsSet("nosleep") {
+			containrunnerInstance.NoSleep = true
 		}
 
 		// dblog is a special case which doesn't want the containrunner to be initiated.

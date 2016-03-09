@@ -143,7 +143,7 @@ func FindMatchingContainers(existing_containers []ContainerDetails, required_ser
 	return found_containers, remaining_containers
 }
 
-func ConvergeContainers(conf MachineConfiguration, preDelay bool, client *docker.Client) error {
+func ConvergeContainers(conf MachineConfiguration, preDelay bool, postDelay bool, client *docker.Client) error {
 	var opts docker.ListContainersOptions
 	var ready_for_launch []ServiceConfiguration
 	opts.All = true
@@ -240,7 +240,7 @@ func ConvergeContainers(conf MachineConfiguration, preDelay bool, client *docker
 	for _, container := range ready_for_launch {
 		imageName := GetContainerImageNameWithRevision(container, "")
 
-		err = LaunchContainer(container.Name, imageName, container.Container, preDelay, client)
+		err = LaunchContainer(container.Name, imageName, container.Container, preDelay, postDelay, client)
 		if err != nil {
 			somethingFailed = err
 		}
@@ -443,7 +443,7 @@ func VerifyContainerExistsInRepository(image_name string, overrided_revision str
 	return true, data.LastUpdate, nil
 }
 
-func LaunchContainer(name string, imageName string, container *ContainerConfiguration, preDelay bool, client *docker.Client) error {
+func LaunchContainer(name string, imageName string, container *ContainerConfiguration, preDelay bool, postDelay bool, client *docker.Client) error {
 
 	image, err := GetContainerImage(imageName, client)
 	if err != nil {
@@ -492,6 +492,12 @@ func LaunchContainer(name string, imageName string, container *ContainerConfigur
 	var config docker.Config = container.Config
 	config.Image = imageName
 	options.Config = &config
+
+	if postDelay {
+		delay := rand.Intn(40) + 1
+		fmt.Printf("Sleeping %d seconds before relaunching container %s\n", delay, imageName)
+		time.Sleep(time.Second * time.Duration(delay))
+	}
 
 	DestroyContainer(name, client)
 

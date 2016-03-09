@@ -41,7 +41,8 @@ type OrbitConfiguration struct {
 }
 
 type GlobalOrbitProperties struct {
-	AMQPUrl string
+	AMQPUrl           string
+	AvailabilityZones map[string][]string
 }
 
 // Represents a single tag inside a /orbit/machineconfiguration/
@@ -126,6 +127,13 @@ func NewMachineConfiguration() *MachineConfiguration {
 	return mc
 }
 
+func NewGlobalOrbitProperties() *GlobalOrbitProperties {
+	g := new(GlobalOrbitProperties)
+	g.AvailabilityZones = make(map[string][]string)
+
+	return g
+}
+
 func (c BoundService) GetConfig() ServiceConfiguration {
 	if c.cachedMergedConfig != nil {
 		return *(c.cachedMergedConfig)
@@ -145,6 +153,12 @@ func (c *ConfigResultEtcdPublisher) PublishServiceState(serviceName string, endp
 		log.Debug("Creating new Etcd client (%+v) so that we can report that service %s at %s is %+v using ttl %d\n", c.EtcdEndpoints, serviceName, endpoint, ok, c.ttl)
 		c.etcd = GetEtcdClient(c.EtcdEndpoints)
 
+	}
+
+	if info != nil {
+		log.Debug("Setting service %s endpoint %s info, ok:%s, revision:%s\n", serviceName, endpoint, ok, info.Revision)
+	} else {
+		log.Debug("Setting service %s endpoint %s info, ok:%s, revision: N/A\n", serviceName, endpoint, ok)
 	}
 
 	key := c.EtcdBasePath + "/services/" + serviceName + "/endpoints/" + endpoint

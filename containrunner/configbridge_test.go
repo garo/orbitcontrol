@@ -156,6 +156,28 @@ func TestGetGlobalOrbitProperties(t *testing.T) {
 
 }
 
+func TestGetGlobalOrbitPropertiesWithAvailabilityZones(t *testing.T) {
+	etcd := etcd.NewClient(TestingEtcdEndpoints)
+	defer etcd.Close()
+	etcd.RawDelete("/test/", true, true)
+
+	var ct Containrunner
+	ct.EtcdBasePath = "/test"
+
+	gop := NewGlobalOrbitProperties()
+	gop.AMQPUrl = "amqp://guest:guest@localhost:5672/"
+	gop.AvailabilityZones["us-east-1a"] = []string{"10.0.0.0/24", "10.0.1.0/24"}
+	bytes, _ := json.Marshal(gop)
+	_, err := etcd.Set("/test/globalproperties", string(bytes), 10)
+
+	gop2, err := ct.GetGlobalOrbitProperties(etcd)
+	assert.Nil(t, err)
+	assert.Equal(t, `amqp://guest:guest@localhost:5672/`, gop2.AMQPUrl)
+	assert.Equal(t, `10.0.0.0/24`, gop2.AvailabilityZones["us-east-1a"][0])
+	assert.Equal(t, `10.0.1.0/24`, gop2.AvailabilityZones["us-east-1a"][1])
+
+}
+
 func TestUploadOrbitConfigurationToEtcdWhichRemovesAService(t *testing.T) {
 	etcd := etcd.NewClient(TestingEtcdEndpoints)
 	defer etcd.Close()
