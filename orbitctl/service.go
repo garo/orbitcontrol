@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/user"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -381,10 +382,20 @@ func setServiceRevision(name string, revision string, machineAddress string, ser
 		fmt.Printf("Full deployment takes around two minutes\n")
 
 		if machineAddress == "" {
+			count := 0
 			for true {
+				count = count + 1
 				time.Sleep(time.Second * 1)
 				old, updated, _ := CheckDeploymentProgress(name, revision)
 				fmt.Printf("Servers with old revision: %d, servers with new revision: %d... \r", len(old), len(updated))
+				if count >= 20 && count%10 == 0 {
+					fmt.Printf("\nServers with still old revision: ")
+					sort.Strings(old)
+					for _, ip := range old {
+						fmt.Printf("%s ", ip)
+					}
+					fmt.Printf("\n")
+				}
 				if len(old) == 0 && len(updated) > 0 {
 					break
 				}
