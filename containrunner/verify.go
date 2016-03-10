@@ -3,6 +3,8 @@ package containrunner
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/coreos/etcd/Godeps/_workspace/src/golang.org/x/net/context"
+	etcd "github.com/coreos/etcd/client"
 )
 
 type MissingEtcdPathError struct {
@@ -33,27 +35,27 @@ func (c *Containrunner) VerifyAgainstLocalDirectory(directory string) error {
 }
 
 func (c *Containrunner) VerifyAgainstConfiguration(localoc *OrbitConfiguration) error {
-	etcd := GetEtcdClient(c.EtcdEndpoints)
+	etcdClient := GetEtcdClient(c.EtcdEndpoints)
 
 	if localoc.MachineConfigurations != nil {
 		for tagName, machineConfiguration := range localoc.MachineConfigurations {
 
 			path := c.EtcdBasePath + "/machineconfigurations/tags/" + tagName
-			_, err := etcd.Get(path, true, true)
+			_, err := etcdClient.Get(context.Background(), path, &etcd.GetOptions{Recursive: true, Sort: true})
 			if err != nil {
 				return &MissingEtcdPathError{"etcd path missing: " + path}
 			}
 
 			if machineConfiguration.Services != nil {
 				path := c.EtcdBasePath + "/machineconfigurations/tags/" + tagName + "/services"
-				_, err := etcd.Get(path, true, true)
+				_, err := etcdClient.Get(context.Background(), path, &etcd.GetOptions{Recursive: true, Sort: true})
 				if err != nil {
 					return &MissingEtcdPathError{"etcd path missing: " + path}
 				}
 
 				for serviceName, boundServiceConfiguration := range machineConfiguration.Services {
 					path := c.EtcdBasePath + "/machineconfigurations/tags/" + tagName + "/services/" + serviceName
-					res, err := etcd.Get(path, true, true)
+					res, err := etcdClient.Get(context.Background(), path, &etcd.GetOptions{Recursive: true, Sort: true})
 					if err != nil {
 						return &MissingEtcdPathError{"etcd path missing: " + path}
 					}
@@ -81,7 +83,7 @@ func (c *Containrunner) VerifyAgainstConfiguration(localoc *OrbitConfiguration) 
 
 			if machineConfiguration.HAProxyConfiguration != nil {
 				path := c.EtcdBasePath + "/machineconfigurations/tags/" + tagName + "/haproxy_config"
-				res, err := etcd.Get(path, true, true)
+				res, err := etcdClient.Get(context.Background(), path, &etcd.GetOptions{Recursive: true, Sort: true})
 				if err != nil {
 					return &MissingEtcdPathError{"etcd path missing: " + path}
 				}
@@ -99,13 +101,13 @@ func (c *Containrunner) VerifyAgainstConfiguration(localoc *OrbitConfiguration) 
 	if localoc.Services != nil {
 		for serviceName, serviceConfig := range localoc.Services {
 			path := c.EtcdBasePath + "/services/" + serviceName
-			_, err := etcd.Get(path, true, true)
+			_, err := etcdClient.Get(context.Background(), path, &etcd.GetOptions{Recursive: true, Sort: true})
 			if err != nil {
 				return &MissingEtcdPathError{"etcd path missing: " + path}
 			}
 
 			path = c.EtcdBasePath + "/services/" + serviceName + "/config"
-			res, err := etcd.Get(path, true, true)
+			res, err := etcdClient.Get(context.Background(), path, &etcd.GetOptions{Recursive: true, Sort: true})
 			if err != nil {
 				return &MissingEtcdPathError{"etcd path missing: " + path}
 			}

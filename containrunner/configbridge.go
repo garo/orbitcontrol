@@ -6,7 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/coreos/go-etcd/etcd"
+	"github.com/coreos/etcd/Godeps/_workspace/src/golang.org/x/net/context"
+	etcd "github.com/coreos/etcd/client"
 	"io/ioutil"
 	"os"
 	"path"
@@ -104,7 +105,7 @@ type ConfigResultEtcdPublisher struct {
 	ttl           uint64
 	EtcdBasePath  string
 	EtcdEndpoints []string
-	etcd          *etcd.Client
+	etcd          etcd.KeysAPI
 }
 
 // Stored inside file /orbit/services/<service>/endpoints/<host:port>
@@ -163,7 +164,7 @@ func (c *ConfigResultEtcdPublisher) PublishServiceState(serviceName string, endp
 
 	key := c.EtcdBasePath + "/services/" + serviceName + "/endpoints/" + endpoint
 
-	_, err := c.etcd.Get(key, false, false)
+	_, err := c.etcd.Get(context.Background(), key, nil)
 	if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
 		fmt.Fprintf(os.Stderr, "Error getting key %s from etcd. Error: %+v\n", key, err)
 		c.etcd = nil
@@ -177,7 +178,7 @@ func (c *ConfigResultEtcdPublisher) PublishServiceState(serviceName string, endp
 			log.Info(LogEvent(ServiceStateChangeEvent{serviceName, endpoint, ok}))
 		}
 
-		_, err = c.etcd.Delete(key, true)
+		_, err = c.etcd.Delete(context.Background(), key, &etcd.DeleteOptions{Recursive: true})
 		if err != nil && !strings.HasPrefix(err.Error(), "100:") {
 			fmt.Fprintf(os.Stderr, "Error deleting key %s from etcd. Error: %+v\n", key, err)
 			c.etcd = nil
@@ -186,7 +187,7 @@ func (c *ConfigResultEtcdPublisher) PublishServiceState(serviceName string, endp
 
 	if ok {
 		bytes, err := json.Marshal(info)
-		_, err = c.etcd.Set(key, string(bytes), c.ttl)
+		_, err = c.etcd.Set(context.Background(), key, string(bytes), &etcd.SetOptions{TTL: time.Duration(c.ttl) * time.Second})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error setting key %s to etcd. Error: %+v\n", key, err)
 			c.etcd = nil
@@ -197,7 +198,6 @@ func (c *ConfigResultEtcdPublisher) PublishServiceState(serviceName string, endp
 // Polls for configuration updates and triggers a NewRuntimeConfigurationEvent.
 func (s *Containrunner) PollConfigurationUpdate() {
 	etcdClient := GetEtcdClient(s.EtcdEndpoints)
-	defer etcdClient.Close()
 
 	var err error
 
@@ -385,26 +385,28 @@ func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*Orbi
 	return oc, nil
 }
 
-func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *OrbitConfiguration, etcdClient *etcd.Client) error {
+func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *OrbitConfiguration, etcdClient etcd.KeysAPI) error {
 	if etcdClient == nil {
 		etcdClient = GetEtcdClient(c.EtcdEndpoints)
-		defer etcdClient.Close()
 
 		fmt.Fprintf(os.Stderr, "EtcdEndpoints: %s\n", c.EtcdEndpoints)
 	}
 
 	bytes, err := json.Marshal(orbitConfiguration.GlobalOrbitProperties)
-	_, err = etcdClient.Set(c.EtcdBasePath+"/globalproperties", string(bytes), 0)
+	_, err = etcdClient.Set(context.Background(), c.EtcdBasePath+"/globalproperties", string(bytes), nil)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error here: %+v\n", err)
+		fmt.Fprintf(os.Stderr, "etcdClient: %+v\n", etcdClient)
+
 		return err
 	}
 
 	for tag, mc := range orbitConfiguration.MachineConfigurations {
-		etcdClient.CreateDir(c.EtcdBasePath+"/machineconfigurations/tags/"+tag, 0)
-		etcdClient.CreateDir(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/services", 0)
+		etcdClient.Set(context.Background(), c.EtcdBasePath+"/machineconfigurations/tags/"+tag, "", &etcd.SetOptions{Dir: true})
+		etcdClient.Set(context.Background(), c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/services", "", &etcd.SetOptions{Dir: true})
 
 		if mc.HAProxyConfiguration != nil {
-			_, err := etcdClient.Set(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/haproxy_config", mc.HAProxyConfiguration.Template, 0)
+			_, err := etcdClient.Set(context.Background(), c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/haproxy_config", mc.HAProxyConfiguration.Template, nil)
 			if err != nil {
 				return err
 			}
@@ -413,7 +415,7 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 				for name, contents := range mc.HAProxyConfiguration.Certs {
 					// TODO: implement old file removal
 
-					_, err := etcdClient.Set(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/certs/"+name, contents, 0)
+					_, err := etcdClient.Set(context.Background(), c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/certs/"+name, contents, nil)
 					if err != nil {
 						return err
 					}
@@ -424,7 +426,7 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 				for name, contents := range mc.HAProxyConfiguration.Files {
 					// TODO: implement old file removal
 
-					_, err := etcdClient.Set(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/haproxy_files/"+name, contents, 0)
+					_, err := etcdClient.Set(context.Background(), c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/haproxy_files/"+name, contents, nil)
 					if err != nil {
 						return err
 					}
@@ -435,7 +437,7 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 
 		if len(mc.AuthoritativeNames) > 0 {
 			bytes, err := json.Marshal(mc.AuthoritativeNames)
-			_, err = etcdClient.Set(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/authoritative_names", string(bytes), 0)
+			_, err = etcdClient.Set(context.Background(), c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/authoritative_names", string(bytes), nil)
 			if err != nil {
 				return err
 			}
@@ -444,14 +446,14 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 
 		// First check if a service needs to be removed
 		key := c.EtcdBasePath + "/machineconfigurations/tags/" + tag + "/services"
-		res, err := etcdClient.Get(key, true, true)
+		res, err := etcdClient.Get(context.Background(), key, &etcd.GetOptions{Recursive: true, Sort: true})
 		if err == nil {
 			for _, node := range res.Node.Nodes {
 				name := string(node.Key[len(res.Node.Key)+1:])
 				_, exists := mc.Services[name]
 				if exists == false {
 					fmt.Printf("Service %s does not exists any more in tag %s, deleting it.\n", name, tag)
-					etcdClient.Delete(node.Key, true)
+					etcdClient.Delete(context.Background(), node.Key, &etcd.DeleteOptions{Recursive: true})
 				}
 			}
 		}
@@ -466,7 +468,7 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 				str = string(bytes)
 			}
 
-			_, err := etcdClient.Set(c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/services/"+name, str, 0)
+			_, err := etcdClient.Set(context.Background(), c.EtcdBasePath+"/machineconfigurations/tags/"+tag+"/services/"+name, str, nil)
 			if err != nil {
 				return err
 			}
@@ -474,10 +476,10 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 	}
 
 	for name, service := range orbitConfiguration.Services {
-		etcdClient.CreateDir(c.EtcdBasePath+"/services/"+name, 0)
+		etcdClient.Set(context.Background(), c.EtcdBasePath+"/services/"+name, "", &etcd.SetOptions{Dir: true})
 
 		bytes, err := json.Marshal(service)
-		_, err = etcdClient.Set(c.EtcdBasePath+"/services/"+name+"/config", string(bytes), 0)
+		_, err = etcdClient.Set(context.Background(), c.EtcdBasePath+"/services/"+name+"/config", string(bytes), nil)
 		if err != nil {
 			return err
 		}
@@ -487,10 +489,9 @@ func (c *Containrunner) UploadOrbitConfigurationToEtcd(orbitConfiguration *Orbit
 	return nil
 }
 
-func (c *Containrunner) GetAllServices(etcdClient *etcd.Client) (map[string]ServiceConfiguration, error) {
+func (c *Containrunner) GetAllServices(etcdClient etcd.KeysAPI) (map[string]ServiceConfiguration, error) {
 	if etcdClient == nil {
 		etcdClient = GetEtcdClient(c.EtcdEndpoints)
-		defer etcdClient.Close()
 
 	}
 
@@ -498,7 +499,7 @@ func (c *Containrunner) GetAllServices(etcdClient *etcd.Client) (map[string]Serv
 	var service ServiceConfiguration
 
 	key := c.EtcdBasePath + "/services/"
-	res, err := etcdClient.Get(key, true, true)
+	res, err := etcdClient.Get(context.Background(), key, &etcd.GetOptions{Recursive: true, Sort: true})
 	if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
 		return nil, err
 	}
@@ -521,16 +522,15 @@ func (c *Containrunner) GetAllServices(etcdClient *etcd.Client) (map[string]Serv
 	return services, nil
 }
 
-func (c *Containrunner) TagServiceToTag(service string, tag string, etcdClient *etcd.Client) error {
+func (c *Containrunner) TagServiceToTag(service string, tag string, etcdClient etcd.KeysAPI) error {
 	if etcdClient == nil {
 		etcdClient = GetEtcdClient(c.EtcdEndpoints)
-		defer etcdClient.Close()
 
 	}
 
 	key := c.EtcdBasePath + "/machineconfigurations/tags/" + tag + "/services/" + service
 	//fmt.Fprintf(os.Stderr, "Set key: %s\n", key)
-	_, err := etcdClient.Set(key, "{}", 0)
+	_, err := etcdClient.Set(context.Background(), key, "{}", nil)
 	if err != nil {
 		return err
 	}
@@ -538,14 +538,12 @@ func (c *Containrunner) TagServiceToTag(service string, tag string, etcdClient *
 	return nil
 }
 
-func (c *Containrunner) RemoveService(name string, etcdClient *etcd.Client) error {
+func (c *Containrunner) RemoveService(name string, etcdClient etcd.KeysAPI) error {
 	if etcdClient == nil {
 		etcdClient = GetEtcdClient(c.EtcdEndpoints)
-		defer etcdClient.Close()
-
 	}
 
-	_, err := etcdClient.Delete(c.EtcdBasePath+"/services/"+name, true)
+	_, err := etcdClient.Delete(context.Background(), c.EtcdBasePath+"/services/"+name, &etcd.DeleteOptions{Recursive: true})
 	if err != nil {
 		return err
 	}
@@ -553,14 +551,12 @@ func (c *Containrunner) RemoveService(name string, etcdClient *etcd.Client) erro
 	return nil
 }
 
-func (c *Containrunner) GetServiceByName(name string, etcdClient *etcd.Client, machineAddress string) (ServiceConfiguration, error) {
+func (c *Containrunner) GetServiceByName(name string, etcdClient etcd.KeysAPI, machineAddress string) (ServiceConfiguration, error) {
 	if etcdClient == nil {
 		etcdClient = GetEtcdClient(c.EtcdEndpoints)
-		defer etcdClient.Close()
-
 	}
 
-	res, err := etcdClient.Get(c.EtcdBasePath+"/services/"+name, true, true)
+	res, err := etcdClient.Get(context.Background(), c.EtcdBasePath+"/services/"+name, &etcd.GetOptions{Recursive: true, Sort: true})
 	if err != nil { // 100: Key not found
 		return ServiceConfiguration{}, err
 	}
@@ -619,11 +615,11 @@ func (c *Containrunner) GetServiceByName(name string, etcdClient *etcd.Client, m
 	return serviceConfiguration, nil
 }
 
-func (c *Containrunner) GetGlobalOrbitProperties(etcdClient *etcd.Client) (GlobalOrbitProperties, error) {
+func (c *Containrunner) GetGlobalOrbitProperties(etcdClient etcd.KeysAPI) (GlobalOrbitProperties, error) {
 	gop := GlobalOrbitProperties{}
 
 	key := c.EtcdBasePath + "/globalproperties"
-	res, err := etcdClient.Get(key, true, true)
+	res, err := etcdClient.Get(context.Background(), key, &etcd.GetOptions{Recursive: true, Sort: true})
 
 	if err != nil {
 		if !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
@@ -640,10 +636,10 @@ func (c *Containrunner) GetGlobalOrbitProperties(etcdClient *etcd.Client) (Globa
 
 func (c *Containrunner) GetKnownTags() ([]string, error) {
 	var tags []string
-	var etcd *etcd.Client = GetEtcdClient(c.EtcdEndpoints)
+	etcdClient := GetEtcdClient(c.EtcdEndpoints)
 
 	key := c.EtcdBasePath + "/machineconfigurations/tags/"
-	res, err := etcd.Get(key, true, true)
+	res, err := etcdClient.Get(context.Background(), key, &etcd.GetOptions{Recursive: true, Sort: true})
 	if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
 		return nil, err
 	}
@@ -749,13 +745,13 @@ func MergeServiceConfig(dst ServiceConfiguration, overwrite ServiceConfiguration
 	return dst
 }
 
-func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []string, machineAddress string) (MachineConfiguration, error) {
+func (c *Containrunner) GetMachineConfigurationByTags(etcdClient etcd.KeysAPI, tags []string, machineAddress string) (MachineConfiguration, error) {
 
 	var configuration MachineConfiguration
 	for _, tag := range tags {
 
 		key := c.EtcdBasePath + "/machineconfigurations/tags/" + tag
-		res, err := etcd.Get(key, true, true)
+		res, err := etcdClient.Get(context.Background(), key, &etcd.GetOptions{Recursive: true, Sort: true})
 		if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
 			fmt.Fprintf(os.Stderr, "Error getting machine configuration from key %s. Err: %+v\n", key, err)
 			return configuration, err
@@ -783,7 +779,7 @@ func (c *Containrunner) GetMachineConfigurationByTags(etcd *etcd.Client, tags []
 
 						// The GetServiceByName creates completly new ServiceConfiguration instance
 						// So it's later safe to use MergeServiceConfig to modify it (it's not shared between machines or anything)
-						boundService.DefaultConfiguration, err = c.GetServiceByName(name, etcd, machineAddress)
+						boundService.DefaultConfiguration, err = c.GetServiceByName(name, etcdClient, machineAddress)
 						if err != nil {
 							fmt.Fprintf(os.Stderr, "Error getting service %s: %+v\n", name, err)
 							return configuration, err
@@ -845,9 +841,8 @@ func GetAllServiceEndpoints(etcdEndpoints []string, etcdBasePath string) (map[st
 	serviceBackends := make(map[string]map[string]*EndpointInfo)
 
 	etcdClient := GetEtcdClient(etcdEndpoints)
-	defer etcdClient.Close()
 
-	res, err := etcdClient.Get(etcdBasePath+"/services/", true, true)
+	res, err := etcdClient.Get(context.Background(), etcdBasePath+"/services/", &etcd.GetOptions{Recursive: true, Sort: true})
 	if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
 		log.Error("Could not get services from etcd endpoint: %+v", etcdEndpoints)
 		panic(err)
@@ -896,9 +891,8 @@ func GetAllServiceEndpoints(etcdEndpoints []string, etcdBasePath string) (map[st
 func (c Containrunner) GetEndpointsForService(service_name string) (map[string]*EndpointInfo, error) {
 
 	etcdClient := GetEtcdClient(c.EtcdEndpoints)
-	defer etcdClient.Close()
 
-	res, err := etcdClient.Get(c.EtcdBasePath+"/services/"+service_name+"/endpoints", true, true)
+	res, err := etcdClient.Get(context.Background(), c.EtcdBasePath+"/services/"+service_name+"/endpoints", &etcd.GetOptions{Recursive: true, Sort: true})
 	if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
 		log.Error("Could not get service endpoints: %+v", err.Error())
 		return nil, err
@@ -947,9 +941,9 @@ func (c *Containrunner) ReadServiceFromFile(filename string) (ServiceConfigurati
 	return serviceConfiguration, nil
 }
 
-func (c Containrunner) GetServiceRevision(service_name string, etcd *etcd.Client) (*ServiceRevision, error) {
+func (c Containrunner) GetServiceRevision(service_name string, etcdClient etcd.KeysAPI) (*ServiceRevision, error) {
 
-	res, err := etcd.Get(c.EtcdBasePath+"/services/"+service_name+"/revision", true, true)
+	res, err := etcdClient.Get(context.Background(), c.EtcdBasePath+"/services/"+service_name+"/revision", &etcd.GetOptions{Recursive: true, Sort: true})
 	if err != nil && !strings.HasPrefix(err.Error(), "100:") { // 100: Key not found
 		panic(err)
 	}
@@ -964,31 +958,29 @@ func (c Containrunner) GetServiceRevision(service_name string, etcd *etcd.Client
 	return serviceRevision, nil
 }
 
-func (c Containrunner) SetServiceRevision(service_name string, serviceRevision ServiceRevision, etcdClient *etcd.Client) error {
+func (c Containrunner) SetServiceRevision(service_name string, serviceRevision ServiceRevision, etcdClient etcd.KeysAPI) error {
 	if etcdClient == nil {
 		etcdClient = GetEtcdClient(c.EtcdEndpoints)
-		defer etcdClient.Close()
 	}
 
 	bytes, err := json.Marshal(serviceRevision)
-	_, err = etcdClient.Set(c.EtcdBasePath+"/services/"+service_name+"/revision", string(bytes), 0)
+	_, err = etcdClient.Set(context.Background(), c.EtcdBasePath+"/services/"+service_name+"/revision", string(bytes), nil)
 	if err != nil {
 		return err
 	}
 
-	etcdClient.Delete(c.EtcdBasePath+"/services/"+service_name+"/machines", true)
+	etcdClient.Delete(context.Background(), c.EtcdBasePath+"/services/"+service_name+"/machines", &etcd.DeleteOptions{Recursive: true})
 
 	return nil
 }
 
-func (c Containrunner) SetServiceRevisionForMachine(service_name string, serviceRevision ServiceRevision, machineAddress string, etcdClient *etcd.Client) error {
+func (c Containrunner) SetServiceRevisionForMachine(service_name string, serviceRevision ServiceRevision, machineAddress string, etcdClient etcd.KeysAPI) error {
 	if etcdClient == nil {
 		etcdClient = GetEtcdClient(c.EtcdEndpoints)
-		defer etcdClient.Close()
 	}
 
 	bytes, err := json.Marshal(serviceRevision)
-	_, err = etcdClient.Set(c.EtcdBasePath+"/services/"+service_name+"/machines/"+machineAddress, string(bytes), 0)
+	_, err = etcdClient.Set(context.Background(), c.EtcdBasePath+"/services/"+service_name+"/machines/"+machineAddress, string(bytes), nil)
 	if err != nil {
 		return err
 	}

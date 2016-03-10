@@ -2,7 +2,7 @@ package containrunner
 
 import (
 	"fmt"
-	"github.com/coreos/go-etcd/etcd"
+	etcd "github.com/coreos/etcd/client"
 	"github.com/fsouza/go-dockerclient"
 	"github.com/op/go-logging"
 	"math/rand"
@@ -52,7 +52,6 @@ func (s *Containrunner) Init() {
 	rand.Seed(time.Now().UnixNano())
 
 	etcdClient := GetEtcdClient(s.EtcdEndpoints)
-	defer etcdClient.Close()
 
 	globalConfiguration, err := s.GetGlobalOrbitProperties(etcdClient)
 	if err != nil {
@@ -94,7 +93,6 @@ func (s *Containrunner) Init() {
 // block polls for new configuration changes and triggers periodic operations.
 func (s *Containrunner) EventHandler(incomingNetworkEvents <-chan OrbitEvent, incomingLoopbackEvents <-chan OrbitEvent) {
 	etcdClient := GetEtcdClient(s.EtcdEndpoints)
-	defer etcdClient.Close()
 
 	for {
 		select {
@@ -158,7 +156,7 @@ func (s *Containrunner) EventHandler(incomingNetworkEvents <-chan OrbitEvent, in
 }
 
 // Takes an OrbitEvent and calls appropriate handler function in a new goroutine.
-func (s *Containrunner) DispatchEvent(receiveredEvent OrbitEvent, etcdClient *etcd.Client) {
+func (s *Containrunner) DispatchEvent(receiveredEvent OrbitEvent, etcdClient etcd.KeysAPI) {
 	switch receiveredEvent.Type {
 	case "NoopEvent":
 		log.Debug("Got NoopEvent %+v\n", receiveredEvent)
@@ -256,7 +254,7 @@ func (s *Containrunner) HandleDeploymentEvent(e DeploymentEvent) {
 	}
 }
 
-func (s *Containrunner) HandleServiceStateEvent(e ServiceStateEvent, etcdClient *etcd.Client) {
+func (s *Containrunner) HandleServiceStateEvent(e ServiceStateEvent, etcdClient etcd.KeysAPI) {
 	log.Debug("ServiceStateEvent %+v", e)
 
 	if configResultPublisher == nil {
@@ -337,9 +335,21 @@ func (s *Containrunner) Wait() {
 	<-s.exitChannel
 }
 
-func GetEtcdClient(endpoints []string) *etcd.Client {
-	e := etcd.NewClient(endpoints)
-	return e
+func GetEtcdClient(endpoints []string) etcd.KeysAPI {
+
+	cfg := etcd.Config{
+		Endpoints:               endpoints,
+		Transport:               etcd.DefaultTransport,
+		HeaderTimeoutPerRequest: time.Second,
+	}
+	client, err := etcd.New(cfg)
+
+	if err != nil {
+		panic(err)
+	}
+
+	kapi := etcd.NewKeysAPI(client)
+	return kapi
 }
 
 /*
