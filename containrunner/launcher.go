@@ -532,7 +532,8 @@ func DestroyContainer(name string, client *docker.Client) error {
 		container := ContainerDetails{APIContainers: container_info}
 		container.Container, err = client.InspectContainer(container.ID)
 		if err != nil {
-			fmt.Printf("error inspecting container. %+v\n", err)
+			fmt.Printf("error inspecting container %v. %+v\n", container_info, err)
+			continue
 		}
 
 		// For some reason the container name has / prefix (eg. "/comet"). Strip it out
