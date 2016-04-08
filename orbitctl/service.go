@@ -344,7 +344,11 @@ func setServiceRevision(name string, revision string, machineAddress string, ser
 	}
 
 	diff := time.Since(time.Unix(last_update, 0))
-	fmt.Printf("The container %s you are about to deploy was last updated at %s ago\n", revision, diff)
+	if last_update == 0 {
+		fmt.Printf("Last update time for container is not known due to registry v2\n", revision)
+	} else {
+		fmt.Printf("The container %s you are about to deploy was last updated at %s ago\n", revision, diff)
+	}
 
 	if machineAddress != "" {
 		fmt.Printf("Setting service %s revision to %s for machine ip %s\n\n", name, revision, machineAddress)

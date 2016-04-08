@@ -158,7 +158,9 @@ func ConvergeContainers(conf MachineConfiguration, preDelay bool, postDelay bool
 		container := ContainerDetails{APIContainers: container_info}
 		container.Container, err = client.InspectContainer(container.ID)
 		if err != nil {
-			panic(err)
+			fmt.Printf("error inspecting container. %+v\n", err)
+			fmt.Printf("error inspecting container %v. %+v\n", container_info, err)
+			continue
 		}
 
 		// For some reason the container name has / prefix (eg. "/comet"). Strip it out
@@ -407,7 +409,23 @@ type RepositoryTagResponse struct {
 	LastUpdate int64 `json:"last_update"`
 }
 
+type RepositoryV2TagResponse struct {
+	SchemaVersion int    `json:"schemaVersion"`
+	Name          string `json:"name"`
+	Tag           string `json:"tag"`
+}
+
 func VerifyContainerExistsInRepository(image_name string, overrided_revision string) (bool, int64, error) {
+	found, lastUpdate, err := VerifyContainerExistsInRepositoryV1(image_name, overrided_revision)
+
+	if err != nil {
+		found, lastUpdate, err = VerifyContainerExistsInRepositoryV2(image_name, overrided_revision)
+	}
+
+	return found, lastUpdate, nil
+}
+
+func VerifyContainerExistsInRepositoryV1(image_name string, overrided_revision string) (bool, int64, error) {
 	// http://registry.applifier.info:5000/comet:ac937833f0af968be564230820a625c17f2e3ef1
 	var imageRegexp = regexp.MustCompile("(.+)/(.+?):(.+)")
 	m := imageRegexp.FindStringSubmatch(image_name)
@@ -441,6 +459,40 @@ func VerifyContainerExistsInRepository(image_name string, overrided_revision str
 		return false, 0, nil
 	}
 	return true, data.LastUpdate, nil
+}
+
+func VerifyContainerExistsInRepositoryV2(image_name string, overrided_revision string) (bool, int64, error) {
+	// http://registry.applifier.info:5000/comet:ac937833f0af968be564230820a625c17f2e3ef1
+	var imageRegexp = regexp.MustCompile("(.+)/(.+?):(.+)")
+	m := imageRegexp.FindStringSubmatch(image_name)
+
+	if len(m) == 0 {
+		return false, 0, errors.New("Invalid image name format. Maybe this is not a local registry? Global Docker registry is currently not supported")
+	}
+
+	if overrided_revision != "" {
+		m[3] = overrided_revision
+	}
+
+	// http://registry.applifier.info:5000/v1/repositories/comet/tags/ac937833f0af968be564230820a625c17f2e3ef1/json
+	// https://registry2.applifier.info:5005/v2/comet/manifests/ac937833f0af968be564230820a625c17f2e3ef1
+	url := "https://" + m[1] + "/v2/" + m[2] + "/manifests/" + m[3]
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return false, 0, err
+	}
+	defer resp.Body.Close()
+
+	var data RepositoryV2TagResponse
+
+	body, err := ioutil.ReadAll(resp.Body)
+	err = json.Unmarshal([]byte(body), &data)
+	if err != nil {
+		return false, 0, err
+	}
+
+	return true, 0, nil
 }
 
 func LaunchContainer(name string, imageName string, container *ContainerConfiguration, preDelay bool, postDelay bool, client *docker.Client) error {
