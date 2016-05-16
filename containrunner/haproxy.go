@@ -115,6 +115,8 @@ func (hac *HAProxySettings) ConvergeHAProxy(configuration *RuntimeConfiguration,
 			fmt.Fprintf(os.Stderr, "Reloading haproxy because new configuration has HAProxyConfiguration")
 			reload_required = true
 		}
+	} else {
+		reload_required = true
 	}
 
 	if reload_required {

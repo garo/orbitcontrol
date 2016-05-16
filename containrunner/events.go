@@ -48,8 +48,9 @@ type NewMachineConfigurationEvent struct {
 }
 
 type NewRuntimeConfigurationEvent struct {
-	NewRuntimeConfiguration RuntimeConfiguration
-	OldRuntimeConfiguration RuntimeConfiguration
+	NewRuntimeConfiguration      RuntimeConfiguration
+	OldRuntimeConfiguration      RuntimeConfiguration
+	OldRuntimeConfigurationValid bool
 }
 
 type ConvergeContainersEvent struct {

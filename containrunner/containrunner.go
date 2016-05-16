@@ -14,26 +14,28 @@ import (
 var log = logging.MustGetLogger("containrunner")
 
 type Containrunner struct {
-	Tags                   []string
-	EtcdEndpoints          []string
-	exitChannel            chan bool
-	MachineAddress         string
-	CheckIntervalInMs      int
-	HAProxySettings        HAProxySettings
-	EtcdBasePath           string
-	Events                 MessageQueuer
-	Docker                 *docker.Client
-	incomingLoopbackEvents chan OrbitEvent
-	DisableAMQP            bool
-	NoSleep                bool
-	CommandController      CommandController
-	CheckEngine            CheckEngine
-	lastConverge           time.Time
-	lastConvergeMu         sync.Mutex
-	currentConfiguration   RuntimeConfiguration
-	newConfiguration       RuntimeConfiguration
-	webserver              Webserver
-	pollerStarted          int32
+	Tags                       []string
+	EtcdEndpoints              []string
+	exitChannel                chan bool
+	MachineAddress             string
+	CheckIntervalInMs          int
+	HAProxySettings            HAProxySettings
+	EtcdBasePath               string
+	Events                     MessageQueuer
+	Docker                     *docker.Client
+	incomingLoopbackEvents     chan OrbitEvent
+	DisableAMQP                bool
+	NoSleep                    bool
+	CommandController          CommandController
+	CheckEngine                CheckEngine
+	lastConverge               time.Time
+	lastConvergeMu             sync.Mutex
+	currentConfiguration       RuntimeConfiguration
+	newConfiguration           RuntimeConfiguration
+	webserver                  Webserver
+	pollerStarted              int32
+	haproxyUpdateWindowStart   int64
+	haproxyUpdateWindowCurrent int64
 }
 
 var configResultPublisher ConfigResultPublisher
@@ -147,6 +149,14 @@ func (s *Containrunner) EventHandler(incomingNetworkEvents <-chan OrbitEvent, in
 
 			}
 		}
+		if atomic.LoadInt64(&s.haproxyUpdateWindowStart) != 0 &&
+			atomic.LoadInt64(&s.haproxyUpdateWindowCurrent)+10 < time.Now().Unix() {
+			log.Info(LogString("Updating haproxy config as no new configurations have detected in 10 seconds after first"))
+			conf := NewRuntimeConfigurationEvent{}
+			conf.NewRuntimeConfiguration = s.newConfiguration
+			go s.ConvergeHAProxy(conf)
+		}
+
 		log.Debug("Loop goes around")
 
 		if incomingLoopbackEvents == nil && incomingNetworkEvents == nil {
@@ -171,7 +181,21 @@ func (s *Containrunner) DispatchEvent(receiveredEvent OrbitEvent, etcdClient etc
 		break
 	case "NewRuntimeConfigurationEvent":
 		log.Info("Event: %s", receiveredEvent.Type)
+		if s.haproxyUpdateWindowStart == 0 {
+			s.haproxyUpdateWindowStart = time.Now().Unix()
+		}
+		s.haproxyUpdateWindowCurrent = time.Now().Unix()
+
+		if s.haproxyUpdateWindowCurrent > s.haproxyUpdateWindowStart+60 {
+			s.haproxyUpdateWindowStart = 0
+			s.haproxyUpdateWindowCurrent = 0
+
+			log.Info(LogString("Forcing haproxy update 60 seconds after first new update"))
+			go s.ConvergeHAProxy(receiveredEvent.Ptr.(NewRuntimeConfigurationEvent))
+		}
+
 		go s.HandleNewRuntimeConfigurationEvent(receiveredEvent.Ptr.(NewRuntimeConfigurationEvent))
+
 		break
 	case "ConvergeContainersEvent":
 		//log.Info("Event: %s", receiveredEvent.Type)
@@ -182,17 +206,22 @@ func (s *Containrunner) DispatchEvent(receiveredEvent OrbitEvent, etcdClient etc
 
 func (s *Containrunner) HandleNewRuntimeConfigurationEvent(e NewRuntimeConfigurationEvent) {
 
-	if e.NewRuntimeConfiguration.MachineConfiguration.HAProxyConfiguration != nil {
-		// Update HAProxy settings
-		s.HAProxySettings.ConvergeHAProxy(&e.NewRuntimeConfiguration, &e.OldRuntimeConfiguration)
-	}
-
 	if !DeepEqual(e.OldRuntimeConfiguration.MachineConfiguration, e.NewRuntimeConfiguration.MachineConfiguration) {
 		log.Info(LogString("New Machine Configuration. Pushing changes to check engine"))
 
 		s.incomingLoopbackEvents <- NewOrbitEvent(ConvergeContainersEvent{e.NewRuntimeConfiguration.MachineConfiguration})
 	}
 
+}
+
+func (s *Containrunner) ConvergeHAProxy(e NewRuntimeConfigurationEvent) {
+	if e.NewRuntimeConfiguration.MachineConfiguration.HAProxyConfiguration != nil {
+		oldRuntimeConfiguration := &e.OldRuntimeConfiguration
+		if !e.OldRuntimeConfigurationValid {
+			oldRuntimeConfiguration = nil
+		}
+		s.HAProxySettings.ConvergeHAProxy(&e.NewRuntimeConfiguration, oldRuntimeConfiguration)
+	}
 }
 
 // Starts ConvergeContainers call. Only one converge process can be executed at a time (enforced via Command subsystem)

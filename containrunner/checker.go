@@ -151,6 +151,8 @@ func CheckServiceWorker(serviceChecksChannel <-chan ServiceChecks, results chan<
 		case newServiceChecks, alive := <-serviceChecksChannel:
 			serviceChecks = newServiceChecks
 
+			fmt.Printf("** Case is here for %, %s\n", serviceChecks.ServiceName, alive)
+
 			if !alive {
 				log.Debug("Stopping CheckServiceWorker for service %s\n", serviceChecks.ServiceName)
 				return
@@ -159,7 +161,7 @@ func CheckServiceWorker(serviceChecksChannel <-chan ServiceChecks, results chan<
 			}
 
 		default:
-			//fmt.Printf("Checking if service %s is up\n", serviceChecks.ServiceName)
+			fmt.Printf("Checking if service %s is up\n", serviceChecks.ServiceName)
 
 			var result ServiceStateEvent
 			result.Service = serviceChecks.ServiceName
