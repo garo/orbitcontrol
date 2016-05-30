@@ -52,7 +52,7 @@ listen test 127.0.0.1:80
 		os.Remove("/tmp/haproxy-test-config.cfg")
 	}
 
-	err = settings.ConvergeHAProxy(&runtimeConfiguration, nil)
+	err = settings.ConvergeHAProxy(&runtimeConfiguration, nil, "")
 	assert.Nil(t, err)
 
 	var bytes []byte
@@ -111,9 +111,34 @@ listen test 127.0.0.1:80
 
 `
 
-	_, err := settings.GetNewConfig(&runtimeConfiguration)
+	_, err := settings.GetNewConfig(&runtimeConfiguration, "")
 	assert.Nil(t, err)
 
+}
+
+func TestLocalEndpoints(t *testing.T) {
+	var settings HAProxySettings
+
+	runtimeConfiguration := RuntimeConfiguration{}
+	runtimeConfiguration.ServiceBackends = make(map[string]map[string]*EndpointInfo)
+	runtimeConfiguration.ServiceBackends["test"] = make(map[string]*EndpointInfo)
+	runtimeConfiguration.ServiceBackends["test"]["10.0.0.3:80"] = &EndpointInfo{}
+	runtimeConfiguration.ServiceBackends["test"]["10.0.0.3:80"].Revision = "rev"
+	runtimeConfiguration.ServiceBackends["test"]["10.0.0.3:80"].AvailabilityZone = "zone1"
+
+	runtimeConfiguration.ServiceBackends["test"]["10.0.0.4:80"] = &EndpointInfo{}
+	runtimeConfiguration.ServiceBackends["test"]["10.0.0.4:80"].Revision = "rev"
+	runtimeConfiguration.ServiceBackends["test"]["10.0.0.4:80"].AvailabilityZone = "zone1"
+
+	runtimeConfiguration.ServiceBackends["test"]["10.0.0.5:80"] = &EndpointInfo{}
+
+	runtimeConfiguration.MachineConfiguration.HAProxyConfiguration = NewHAProxyConfiguration()
+	runtimeConfiguration.MachineConfiguration.HAProxyConfiguration.Template = `{{range LocalEndpoints "test"}}{{.HostPort}}{{end}}`
+
+	str, err := settings.GetNewConfig(&runtimeConfiguration, "zone1")
+	assert.Nil(t, err)
+
+	assert.Equal(t, str, "10.0.0.3:8010.0.0.4:80")
 }
 
 func TestReloadHAProxyOk(t *testing.T) {
@@ -139,7 +164,7 @@ func TestGetNewConfig(t *testing.T) {
 	runtimeConfiguration.MachineConfiguration.HAProxyConfiguration = NewHAProxyConfiguration()
 	runtimeConfiguration.MachineConfiguration.HAProxyConfiguration.Template = "foo\nbar"
 
-	str, err := settings.GetNewConfig(&runtimeConfiguration)
+	str, err := settings.GetNewConfig(&runtimeConfiguration, "")
 	assert.Nil(t, err)
 
 	assert.Equal(t, str, "foo\nbar")
@@ -152,7 +177,7 @@ func TestBuildAndVerifyNewConfigWithErrors(t *testing.T) {
 	runtimeConfiguration.MachineConfiguration.HAProxyConfiguration = NewHAProxyConfiguration()
 	runtimeConfiguration.MachineConfiguration.HAProxyConfiguration.Template = "foo\nbar"
 
-	config, err := settings.BuildAndVerifyNewConfig(&runtimeConfiguration)
+	config, err := settings.BuildAndVerifyNewConfig(&runtimeConfiguration, "")
 	assert.NotNil(t, err)
 	assert.Equal(t, config, "")
 
@@ -178,7 +203,7 @@ Content-Type: text/html
 
 `
 
-	config, err := settings.BuildAndVerifyNewConfig(&runtimeConfiguration)
+	config, err := settings.BuildAndVerifyNewConfig(&runtimeConfiguration, "")
 	assert.Nil(t, err)
 	assert.Equal(t, runtimeConfiguration.MachineConfiguration.HAProxyConfiguration.Template, config)
 

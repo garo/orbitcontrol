@@ -29,6 +29,7 @@ func init() {
 					return errors.New("machine-tags missing")
 				}
 
+				containrunnerInstance.AvailabilityZone = c.String("availability-zone")
 				containrunnerInstance.MachineAddress = c.String("machine-address")
 				containrunnerInstance.Tags = strings.Split(c.String("machine-tags"), ",")
 				containrunnerInstance.CheckIntervalInMs = c.Int("check-interval-in-ms")
@@ -46,6 +47,11 @@ func init() {
 					Name:   "machine-address",
 					Usage:  "Required: Machine external ip into which other machines can connect to, usually ip of eth0. Does not mean public ip in AWS.",
 					EnvVar: "ORBITCTL_MACHINE_ADDRESS",
+				},
+				cli.StringFlag{
+					Name:   "availability-zone",
+					Usage:  "Optional availability zone or placement info, used to prefer nearby service instances",
+					EnvVar: "ORBITCTL_AVAILABILITY_ZONE",
 				},
 				cli.StringFlag{
 					Name:  "machine-tags",

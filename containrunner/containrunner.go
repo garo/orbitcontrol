@@ -36,6 +36,8 @@ type Containrunner struct {
 	pollerStarted              int32
 	haproxyUpdateWindowStart   int64
 	haproxyUpdateWindowCurrent int64
+	HaproxyNoUpdatesDelayWindow int64
+	AvailabilityZone           string
 }
 
 var configResultPublisher ConfigResultPublisher
@@ -117,7 +119,12 @@ func (s *Containrunner) EventHandler(incomingNetworkEvents <-chan OrbitEvent, in
 			if !ok {
 				incomingLoopbackEvents = nil
 			}
-			log.Debug("Got incoming loopback event: %+v", loopbackEvent)
+			str := fmt.Sprintf("Got incoming loopback event: %+v", loopbackEvent)
+			if len(str) > 200 {
+				str = str[0:200]
+			}
+
+			log.Debug(str)
 			s.DispatchEvent(loopbackEvent, etcdClient)
 			break
 
@@ -149,11 +156,18 @@ func (s *Containrunner) EventHandler(incomingNetworkEvents <-chan OrbitEvent, in
 
 			}
 		}
+
+		// This means that there is a wish to update haproxy in the future
 		if atomic.LoadInt64(&s.haproxyUpdateWindowStart) != 0 &&
-			atomic.LoadInt64(&s.haproxyUpdateWindowCurrent)+10 < time.Now().Unix() {
-			log.Info(LogString("Updating haproxy config as no new configurations have detected in 10 seconds after first"))
+
+			// And that the configuration has been stable for 10 seconds
+			atomic.LoadInt64(&s.haproxyUpdateWindowCurrent)+s.HaproxyNoUpdatesDelayWindow < time.Now().Unix() {
+			log.Info(LogString(fmt.Sprintf("Updating haproxy config as no new configurations have detected in %d seconds after first", s.HaproxyNoUpdatesDelayWindow)))
 			conf := NewRuntimeConfigurationEvent{}
 			conf.NewRuntimeConfiguration = s.newConfiguration
+
+			s.haproxyUpdateWindowStart = 0
+			s.haproxyUpdateWindowCurrent = 0
 			go s.ConvergeHAProxy(conf)
 		}
 
@@ -181,20 +195,8 @@ func (s *Containrunner) DispatchEvent(receiveredEvent OrbitEvent, etcdClient etc
 		break
 	case "NewRuntimeConfigurationEvent":
 		log.Info("Event: %s", receiveredEvent.Type)
-		if s.haproxyUpdateWindowStart == 0 {
-			s.haproxyUpdateWindowStart = time.Now().Unix()
-		}
-		s.haproxyUpdateWindowCurrent = time.Now().Unix()
 
-		if s.haproxyUpdateWindowCurrent > s.haproxyUpdateWindowStart+60 {
-			s.haproxyUpdateWindowStart = 0
-			s.haproxyUpdateWindowCurrent = 0
-
-			log.Info(LogString("Forcing haproxy update 60 seconds after first new update"))
-			go s.ConvergeHAProxy(receiveredEvent.Ptr.(NewRuntimeConfigurationEvent))
-		}
-
-		go s.HandleNewRuntimeConfigurationEvent(receiveredEvent.Ptr.(NewRuntimeConfigurationEvent))
+		s.HandleNewRuntimeConfigurationEvent(receiveredEvent.Ptr.(NewRuntimeConfigurationEvent))
 
 		break
 	case "ConvergeContainersEvent":
@@ -206,12 +208,30 @@ func (s *Containrunner) DispatchEvent(receiveredEvent OrbitEvent, etcdClient etc
 
 func (s *Containrunner) HandleNewRuntimeConfigurationEvent(e NewRuntimeConfigurationEvent) {
 
-	if !DeepEqual(e.OldRuntimeConfiguration.MachineConfiguration, e.NewRuntimeConfiguration.MachineConfiguration) {
-		log.Info(LogString("New Machine Configuration. Pushing changes to check engine"))
+	// HAProxy restart grouping feature: When haproxy update is requested it will be delayed for at least 10 seconds
+	// to see if there are any other changes coming. In case there are constantly changes coming then restart
+	// is forced at 10 second mark.
 
-		s.incomingLoopbackEvents <- NewOrbitEvent(ConvergeContainersEvent{e.NewRuntimeConfiguration.MachineConfiguration})
+	// Mark that we want to upgrade haproxy configuration in some point in the near future
+	if s.haproxyUpdateWindowStart == 0 {
+		s.haproxyUpdateWindowStart = time.Now().Unix()
 	}
 
+	// This marks that the configuration has changed recently.
+	s.haproxyUpdateWindowCurrent = time.Now().Unix()
+
+	// If haproxy has still not been updated after 60 seconds then force the update
+	if s.haproxyUpdateWindowCurrent > s.haproxyUpdateWindowStart+60 {
+		s.haproxyUpdateWindowStart = 0
+		s.haproxyUpdateWindowCurrent = 0
+
+		log.Info(LogString("Forcing haproxy update 60 seconds after first new update"))
+		go s.ConvergeHAProxy(e)
+	} else {
+		go s.SoftUpdateHAProxy(e)
+	}
+
+	s.incomingLoopbackEvents <- NewOrbitEvent(ConvergeContainersEvent{e.NewRuntimeConfiguration.MachineConfiguration})
 }
 
 func (s *Containrunner) ConvergeHAProxy(e NewRuntimeConfigurationEvent) {
@@ -220,7 +240,14 @@ func (s *Containrunner) ConvergeHAProxy(e NewRuntimeConfigurationEvent) {
 		if !e.OldRuntimeConfigurationValid {
 			oldRuntimeConfiguration = nil
 		}
-		s.HAProxySettings.ConvergeHAProxy(&e.NewRuntimeConfiguration, oldRuntimeConfiguration)
+		s.HAProxySettings.ConvergeHAProxy(&e.NewRuntimeConfiguration, oldRuntimeConfiguration, s.AvailabilityZone)
+	}
+}
+
+func (s *Containrunner) SoftUpdateHAProxy(e NewRuntimeConfigurationEvent) {
+	if e.NewRuntimeConfiguration.MachineConfiguration.HAProxyConfiguration != nil && e.NewRuntimeConfiguration.LocallyRequiredServices != nil {
+		log.Debug("Doing soft haproxy update: %s", e.NewRuntimeConfiguration.LocallyRequiredServices)
+		s.HAProxySettings.UpdateBackends(&e.NewRuntimeConfiguration)
 	}
 }
 
@@ -241,6 +268,7 @@ func (s *Containrunner) HandleConvergeContainersEvent(e ConvergeContainersEvent)
 			if err == nil {
 				// This must be done after the containers have been converged so that the Check Engine
 				// can report the correct container revision
+
 				s.CheckEngine.PushNewConfiguration(configuration)
 
 				s.SetLastConvergeTime(time.Now())
@@ -288,6 +316,11 @@ func (s *Containrunner) HandleServiceStateEvent(e ServiceStateEvent, etcdClient 
 
 	if configResultPublisher == nil {
 		configResultPublisher = &ConfigResultEtcdPublisher{60, s.EtcdBasePath, s.EtcdEndpoints, etcdClient}
+	}
+
+	// Store the availability zone information here
+	if e.EndpointInfo != nil {
+		e.EndpointInfo.AvailabilityZone = s.AvailabilityZone
 	}
 
 	// The etcd result publisher only wants to know when services are up.

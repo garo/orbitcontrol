@@ -111,6 +111,7 @@ type ConfigResultEtcdPublisher struct {
 // Stored inside file /orbit/services/<service>/endpoints/<host:port>
 type EndpointInfo struct {
 	Revision             string
+	AvailabilityZone     string
 	ServiceConfiguration ServiceConfiguration
 }
 
@@ -201,8 +202,9 @@ func (s *Containrunner) PollConfigurationUpdate() {
 
 	var err error
 
+	var newConfiguration RuntimeConfiguration
 	// Handle new MachineConfiguration
-	s.newConfiguration.MachineConfiguration, err = s.GetMachineConfigurationByTags(etcdClient, s.Tags, s.MachineAddress)
+	newConfiguration.MachineConfiguration, err = s.GetMachineConfigurationByTags(etcdClient, s.Tags, s.MachineAddress)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "100:") {
 			log.Info(LogString("Error:" + err.Error()))
@@ -219,22 +221,57 @@ func (s *Containrunner) PollConfigurationUpdate() {
 
 	// Handle new ServiceBackends
 	backends, err := GetAllServiceEndpoints(s.EtcdEndpoints, s.EtcdBasePath)
-	s.newConfiguration.ServiceBackends = backends
+	newConfiguration.ServiceBackends = backends
 	if err != nil {
 		log.Error("GetAllServiceEndpoints error: %+v", err)
 		return
 	}
 
-	if !DeepEqual(s.currentConfiguration, s.newConfiguration) {
+	if !CompareOldAndNewConfiguration(s.currentConfiguration, newConfiguration) {
 		event := NewRuntimeConfigurationEvent{}
 		event.OldRuntimeConfiguration = s.currentConfiguration
-		event.NewRuntimeConfiguration = s.newConfiguration
+		event.NewRuntimeConfiguration = newConfiguration
 
 		log.Info("Going to send NewRuntimeConfigurationEvent")
 		s.incomingLoopbackEvents <- NewOrbitEvent(event)
 
-		s.currentConfiguration = s.newConfiguration
+		s.currentConfiguration = newConfiguration
 	}
+}
+
+func CompareOldAndNewConfiguration(oldConfiguration RuntimeConfiguration, newConfiguration RuntimeConfiguration) bool {
+	equals := DeepEqual(oldConfiguration, newConfiguration)
+
+	for name, endpoints := range newConfiguration.ServiceBackends {
+		if _, ok := oldConfiguration.ServiceBackends[name]; ok {
+
+			if !DeepEqual(oldConfiguration.ServiceBackends[name], endpoints) {
+				log.Info(fmt.Sprintf("ServiceBackends for %s is not DeepEqual", name))
+			}
+
+			for endpoint, _ := range endpoints {
+				if _, ok := oldConfiguration.ServiceBackends[name][endpoint]; ok {
+
+				} else {
+					log.Info(fmt.Sprintf("New endpoint %s for service %s", endpoint, name))
+				}
+			}
+
+			for endpoint, _ := range oldConfiguration.ServiceBackends[name] {
+				if _, ok := endpoints[endpoint]; ok {
+
+				} else {
+					log.Info(fmt.Sprintf("Deleted endpoint %s from service %s", endpoint, name))
+				}
+
+			}
+
+		} else {
+			log.Info(fmt.Sprintf("New backend section %s in the config.", name))
+		}
+	}
+
+	return equals
 }
 
 func (c *Containrunner) LoadOrbitConfigurationFromFiles(startpath string) (*OrbitConfiguration, error) {

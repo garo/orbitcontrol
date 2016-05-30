@@ -29,6 +29,40 @@ func GetTestingEtcdClient() etcd.KeysAPI {
 
 }
 
+func TestCompareOldAndNewConfiguration(t *testing.T) {
+
+	oc := RuntimeConfiguration{}
+
+	oc.MachineConfiguration.Services = make(map[string]BoundService)
+	oc.ServiceBackends = make(map[string]map[string]*EndpointInfo)
+
+	oc.ServiceBackends["comet"] = make(map[string]*EndpointInfo)
+	oc.ServiceBackends["comet"]["10.1.1.1:80"] = new(EndpointInfo)
+	oc.ServiceBackends["comet"]["10.1.1.1:80"].Revision = "rev"
+	oc.ServiceBackends["comet"]["10.1.1.1:80"].AvailabilityZone = "az"
+
+	nc := RuntimeConfiguration{}
+
+	nc.MachineConfiguration.Services = make(map[string]BoundService)
+	nc.ServiceBackends = make(map[string]map[string]*EndpointInfo)
+
+	nc.ServiceBackends["comet"] = make(map[string]*EndpointInfo)
+
+	nc.ServiceBackends["comet"]["10.1.1.1:80"] = new(EndpointInfo)
+	nc.ServiceBackends["comet"]["10.1.1.1:80"].Revision = "rev"
+	nc.ServiceBackends["comet"]["10.1.1.1:80"].AvailabilityZone = "az"
+
+	assert.Equal(t, CompareOldAndNewConfiguration(oc, nc), true)
+
+	nc.ServiceBackends["comet"]["10.1.1.2:80"] = new(EndpointInfo)
+	nc.ServiceBackends["comet"]["10.1.1.2:80"].Revision = "rev"
+	nc.ServiceBackends["comet"]["10.1.1.2:80"].AvailabilityZone = "az"
+
+	delete(nc.ServiceBackends["comet"], "10.1.1.1:80")
+	assert.Equal(t, CompareOldAndNewConfiguration(oc, nc), false)
+}
+
+
 func TestLoadOrbitConfigurationFromFiles(t *testing.T) {
 	var ct Containrunner
 
@@ -368,23 +402,23 @@ func TestGetMachineConfigurationByTags(t *testing.T) {
 	"Revision" : "asdf"
 }`
 
-	_, err = etcdClient.Set(context.Background(), "/services/ubuntu/revision", revision, &etcd.SetOptions{TTL: 10})
+	_, err = etcdClient.Set(context.Background(), "/services/ubuntu/revision", revision, &etcd.SetOptions{TTL: 20})
 	assert.Nil(t, err)
 
-	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/services/ubuntu", ``, &etcd.SetOptions{TTL: 10})
+	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/services/ubuntu", ``, &etcd.SetOptions{TTL: 20})
 	assert.Nil(t, err)
 
-	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/authoritative_names", `["ubuntu"]`, &etcd.SetOptions{TTL: 10})
+	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/authoritative_names", `["ubuntu"]`, &etcd.SetOptions{TTL: 20})
 	assert.Nil(t, err)
 
-	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/haproxy_config", "foobar", &etcd.SetOptions{TTL: 10})
+	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/haproxy_config", "foobar", &etcd.SetOptions{TTL: 20})
 	assert.Nil(t, err)
 
 	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/haproxy_files", "", &etcd.SetOptions{Dir: true})
-	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/haproxy_files/hello.txt", "hello", &etcd.SetOptions{TTL: 10})
+	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/haproxy_files/hello.txt", "hello", &etcd.SetOptions{TTL: 20})
 	assert.Nil(t, err)
 
-	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/certs/test.pem", "----TEST-----", &etcd.SetOptions{TTL: 10})
+	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/certs/test.pem", "----TEST-----", &etcd.SetOptions{TTL: 20})
 	assert.Nil(t, err)
 
 	tags := []string{"testtag"}
@@ -472,17 +506,17 @@ func TestGetMachineConfigurationByTagsWithOverwrittenParameters(t *testing.T) {
 }`, &etcd.SetOptions{TTL: 10})
 	assert.Nil(t, err)
 
-	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/authoritative_names", `["ubuntu"]`, &etcd.SetOptions{TTL: 10})
+	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/authoritative_names", `["ubuntu"]`, &etcd.SetOptions{TTL: 20})
 	assert.Nil(t, err)
 
-	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/haproxy_config", "foobar", &etcd.SetOptions{TTL: 10})
+	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/haproxy_config", "foobar", &etcd.SetOptions{TTL: 20})
 	assert.Nil(t, err)
 
 	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/haproxy_files", "", &etcd.SetOptions{Dir: true})
-	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/haproxy_files/hello.txt", "hello", &etcd.SetOptions{TTL: 10})
+	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/haproxy_files/hello.txt", "hello", &etcd.SetOptions{TTL: 20})
 	assert.Nil(t, err)
 
-	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/certs/test.pem", "----TEST-----", &etcd.SetOptions{TTL: 10})
+	_, err = etcdClient.Set(context.Background(), "/machineconfigurations/tags/testtag/certs/test.pem", "----TEST-----", &etcd.SetOptions{TTL: 20})
 	assert.Nil(t, err)
 
 	tags := []string{"testtag"}
