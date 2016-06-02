@@ -52,7 +52,9 @@ listen test 127.0.0.1:80
 		os.Remove("/tmp/haproxy-test-config.cfg")
 	}
 
-	err = settings.ConvergeHAProxy(&runtimeConfiguration, nil, "")
+	localInstanceInformation := NewLocalInstanceInformation()
+
+	err = settings.ConvergeHAProxy(&runtimeConfiguration, localInstanceInformation)
 	assert.Nil(t, err)
 
 	var bytes []byte
@@ -110,8 +112,9 @@ listen test 127.0.0.1:80
 {{end}}
 
 `
+	localInstanceInformation := NewLocalInstanceInformation()
 
-	_, err := settings.GetNewConfig(&runtimeConfiguration, "")
+	_, err := settings.GetNewConfig(&runtimeConfiguration, localInstanceInformation)
 	assert.Nil(t, err)
 
 }
@@ -135,7 +138,10 @@ func TestLocalEndpoints(t *testing.T) {
 	runtimeConfiguration.MachineConfiguration.HAProxyConfiguration = NewHAProxyConfiguration()
 	runtimeConfiguration.MachineConfiguration.HAProxyConfiguration.Template = `{{range LocalEndpoints "test"}}{{.HostPort}}{{end}}`
 
-	str, err := settings.GetNewConfig(&runtimeConfiguration, "zone1")
+	localInstanceInformation := NewLocalInstanceInformation()
+	localInstanceInformation.AvailabilityZone = "zone1"
+
+	str, err := settings.GetNewConfig(&runtimeConfiguration, localInstanceInformation)
 	assert.Nil(t, err)
 
 	assert.Equal(t, str, "10.0.0.3:8010.0.0.4:80")
@@ -163,8 +169,9 @@ func TestGetNewConfig(t *testing.T) {
 	runtimeConfiguration := RuntimeConfiguration{}
 	runtimeConfiguration.MachineConfiguration.HAProxyConfiguration = NewHAProxyConfiguration()
 	runtimeConfiguration.MachineConfiguration.HAProxyConfiguration.Template = "foo\nbar"
+	localInstanceInformation := NewLocalInstanceInformation()
 
-	str, err := settings.GetNewConfig(&runtimeConfiguration, "")
+	str, err := settings.GetNewConfig(&runtimeConfiguration, localInstanceInformation)
 	assert.Nil(t, err)
 
 	assert.Equal(t, str, "foo\nbar")
@@ -176,8 +183,9 @@ func TestBuildAndVerifyNewConfigWithErrors(t *testing.T) {
 	runtimeConfiguration := RuntimeConfiguration{}
 	runtimeConfiguration.MachineConfiguration.HAProxyConfiguration = NewHAProxyConfiguration()
 	runtimeConfiguration.MachineConfiguration.HAProxyConfiguration.Template = "foo\nbar"
+	localInstanceInformation := NewLocalInstanceInformation()
 
-	config, err := settings.BuildAndVerifyNewConfig(&runtimeConfiguration, "")
+	config, err := settings.BuildAndVerifyNewConfig(&runtimeConfiguration, localInstanceInformation)
 	assert.NotNil(t, err)
 	assert.Equal(t, config, "")
 
@@ -188,6 +196,8 @@ func TestBuildAndVerifyNewConfig(t *testing.T) {
 	settings.HAProxyBinary = "/usr/sbin/haproxy"
 	settings.HAProxyConfigPath = "/tmp"
 	settings.HAProxyConfigName = "haproxy_config_test.cfg"
+
+	os.Remove(settings.HAProxyConfigPath + "/" + settings.HAProxyConfigName)
 
 	runtimeConfiguration := RuntimeConfiguration{}
 	runtimeConfiguration.MachineConfiguration.HAProxyConfiguration = NewHAProxyConfiguration()
@@ -202,13 +212,33 @@ Connection: close
 Content-Type: text/html
 
 `
+	localInstanceInformation := NewLocalInstanceInformation()
 
-	config, err := settings.BuildAndVerifyNewConfig(&runtimeConfiguration, "")
+	config, err := settings.BuildAndVerifyNewConfig(&runtimeConfiguration, localInstanceInformation)
 	assert.Nil(t, err)
 	assert.Equal(t, runtimeConfiguration.MachineConfiguration.HAProxyConfiguration.Template, config)
 
-	err = settings.CommitNewConfig(config, false)
+	err, changed := settings.CommitNewConfig(config, false)
 	assert.Nil(t, err)
+	assert.Equal(t, changed, true) // First time, new file written
+
+	err, changed = settings.CommitNewConfig(config, false)
+	assert.Nil(t, err)
+	assert.Equal(t, changed, false) // Second time, file was not changed
+
+	runtimeConfiguration.MachineConfiguration.HAProxyConfiguration.Template = `
+listen test 127.0.0.1:80
+	mode http
+	backend 127.0.0.1:81
+	backend 127.0.0.2:81
+`
+	config, err = settings.BuildAndVerifyNewConfig(&runtimeConfiguration, localInstanceInformation)
+	assert.Nil(t, err)
+
+	err, changed = settings.CommitNewConfig(config, false)
+	assert.Nil(t, err)
+	assert.Equal(t, changed, true) // Config changed, file rewritten
+
 
 	bytes, err := ioutil.ReadFile(settings.HAProxyConfigPath + "/500.http")
 	assert.Nil(t, err)
@@ -221,15 +251,16 @@ Content-Type: text/html
 
 }
 
+
 func TestUpdateBackendsUpdateRequiredWithNewBackendSection(t *testing.T) {
 	var settings HAProxySettings
 	settings.HAProxySocket = "/tmp/sock_srv"
 
 	runtimeConfiguration := RuntimeConfiguration{}
-	runtimeConfiguration.LocallyRequiredServices = make(map[string]map[string]*EndpointInfo)
+	localInstanceInformation := NewLocalInstanceInformation()
 	backends := make(map[string]*EndpointInfo)
 	backends["172.16.2.159:3500"] = &EndpointInfo{}
-	runtimeConfiguration.LocallyRequiredServices["comet"] = backends
+	localInstanceInformation.LocallyRequiredServices["comet"] = backends
 
 	ln, err := net.Listen("unix", "/tmp/sock_srv")
 	assert.Nil(t, err)
@@ -253,7 +284,7 @@ func TestUpdateBackendsUpdateRequiredWithNewBackendSection(t *testing.T) {
 		}
 	}(ln)
 
-	restart_required, err := settings.UpdateBackends(&runtimeConfiguration)
+	restart_required, err := settings.UpdateBackends(&runtimeConfiguration, localInstanceInformation)
 
 	assert.Nil(t, err)
 	assert.Equal(t, restart_required, true)
@@ -267,10 +298,10 @@ func TestUpdateBackendsUpdateRequiredWithNewEndpointInBackend(t *testing.T) {
 	settings.HAProxySocket = "/tmp/sock_srv"
 
 	runtimeConfiguration := RuntimeConfiguration{}
-	runtimeConfiguration.LocallyRequiredServices = make(map[string]map[string]*EndpointInfo)
+	localInstanceInformation := NewLocalInstanceInformation()
 	backends := make(map[string]*EndpointInfo)
 	backends["172.16.2.159:3500"] = &EndpointInfo{}
-	runtimeConfiguration.LocallyRequiredServices["comet"] = backends
+	localInstanceInformation.LocallyRequiredServices["comet"] = backends
 
 	ln, err := net.Listen("unix", "/tmp/sock_srv")
 	assert.Nil(t, err)
@@ -297,7 +328,7 @@ func TestUpdateBackendsUpdateRequiredWithNewEndpointInBackend(t *testing.T) {
 		}
 	}(ln)
 
-	restart_required, err := settings.UpdateBackends(&runtimeConfiguration)
+	restart_required, err := settings.UpdateBackends(&runtimeConfiguration, localInstanceInformation)
 
 	assert.Nil(t, err)
 	assert.Equal(t, restart_required, true)
@@ -311,10 +342,10 @@ func TestUpdateBackendsNoUpdateRequiredEverythingMatches(t *testing.T) {
 	settings.HAProxySocket = "/tmp/sock_srv"
 
 	runtimeConfiguration := RuntimeConfiguration{}
-	runtimeConfiguration.LocallyRequiredServices = make(map[string]map[string]*EndpointInfo)
+	localInstanceInformation := NewLocalInstanceInformation()
 	backends := make(map[string]*EndpointInfo)
 	backends["172.16.2.159:3500"] = &EndpointInfo{}
-	runtimeConfiguration.LocallyRequiredServices["comet"] = backends
+	localInstanceInformation.LocallyRequiredServices["comet"] = backends
 
 	var commands []string
 
@@ -344,7 +375,7 @@ func TestUpdateBackendsNoUpdateRequiredEverythingMatches(t *testing.T) {
 		}
 	}(ln)
 
-	restart_required, err := settings.UpdateBackends(&runtimeConfiguration)
+	restart_required, err := settings.UpdateBackends(&runtimeConfiguration, localInstanceInformation)
 
 	assert.Nil(t, err)
 	assert.Equal(t, false, restart_required)
@@ -358,12 +389,12 @@ func TestUpdateBackendsNoUpdateRequiredButServerMustBeDisabled(t *testing.T) {
 	settings.HAProxySocket = "/tmp/sock_srv"
 
 	runtimeConfiguration := RuntimeConfiguration{}
-	runtimeConfiguration.LocallyRequiredServices = make(map[string]map[string]*EndpointInfo)
+	localInstanceInformation := NewLocalInstanceInformation()
 	backends := make(map[string]*EndpointInfo)
 	backends["172.16.2.159:3500"] = &EndpointInfo{}
 	backends["172.16.2.160:3500"] = &EndpointInfo{}
 	backends["172.16.2.161:3500"] = &EndpointInfo{}
-	runtimeConfiguration.LocallyRequiredServices["comet"] = backends
+	localInstanceInformation.LocallyRequiredServices["comet"] = backends
 
 	commands := make(chan string, 5)
 
@@ -397,7 +428,7 @@ func TestUpdateBackendsNoUpdateRequiredButServerMustBeDisabled(t *testing.T) {
 		}
 	}(ln)
 
-	restart_required, err := settings.UpdateBackends(&runtimeConfiguration)
+	restart_required, err := settings.UpdateBackends(&runtimeConfiguration, localInstanceInformation)
 
 	assert.Nil(t, err)
 	assert.Equal(t, false, restart_required)
@@ -411,7 +442,7 @@ func TestUpdateBackendsUpdateRequired_because_less_than80_percent_servers_are_up
 	settings.HAProxySocket = "/tmp/sock_srv"
 
 	runtimeConfiguration := RuntimeConfiguration{}
-	runtimeConfiguration.LocallyRequiredServices = make(map[string]map[string]*EndpointInfo)
+	localInstanceInformation := NewLocalInstanceInformation()
 	backends := make(map[string]*EndpointInfo)
 	backends["172.16.2.159:3500"] = &EndpointInfo{}
 	backends["172.16.2.160:3500"] = &EndpointInfo{}
@@ -430,7 +461,7 @@ func TestUpdateBackendsUpdateRequired_because_less_than80_percent_servers_are_up
 	backends["172.16.2.173:3500"] = &EndpointInfo{}
 	backends["172.16.2.174:3500"] = &EndpointInfo{}
 	backends["172.16.2.175:3500"] = &EndpointInfo{}
-	runtimeConfiguration.LocallyRequiredServices["comet"] = backends
+	localInstanceInformation.LocallyRequiredServices["comet"] = backends
 
 	commands := make(chan string, 5)
 
@@ -465,7 +496,7 @@ func TestUpdateBackendsUpdateRequired_because_less_than80_percent_servers_are_up
 		}
 	}(ln)
 
-	restart_required, err := settings.UpdateBackends(&runtimeConfiguration)
+	restart_required, err := settings.UpdateBackends(&runtimeConfiguration, localInstanceInformation)
 
 	assert.Nil(t, err)
 	assert.Equal(t, true, restart_required)
@@ -478,11 +509,11 @@ func TestUpdateBackendsNoUpdateRequiredButServerMustBeEnabled(t *testing.T) {
 	settings.HAProxySocket = "/tmp/sock_srv"
 
 	runtimeConfiguration := RuntimeConfiguration{}
-	runtimeConfiguration.LocallyRequiredServices = make(map[string]map[string]*EndpointInfo)
+	localInstanceInformation := NewLocalInstanceInformation()
 	backends := make(map[string]*EndpointInfo)
 	backends["172.16.2.159:3500"] = &EndpointInfo{}
 	backends["172.16.2.160:3500"] = &EndpointInfo{}
-	runtimeConfiguration.LocallyRequiredServices["comet"] = backends
+	localInstanceInformation.LocallyRequiredServices["comet"] = backends
 
 	// Channel to get the haproxy status socket commands from our haproxy fake server into the test
 	commands := make(chan string, 5)
@@ -515,7 +546,7 @@ func TestUpdateBackendsNoUpdateRequiredButServerMustBeEnabled(t *testing.T) {
 		}
 	}(ln)
 
-	restart_required, err := settings.UpdateBackends(&runtimeConfiguration)
+	restart_required, err := settings.UpdateBackends(&runtimeConfiguration, localInstanceInformation)
 
 	assert.Nil(t, err)
 
@@ -530,12 +561,12 @@ func TestUpdateBackendsNoUpdateRequiredButDownServerMustBeDisabled(t *testing.T)
 	settings.HAProxySocket = "/tmp/sock_srv"
 
 	runtimeConfiguration := RuntimeConfiguration{}
-	runtimeConfiguration.LocallyRequiredServices = make(map[string]map[string]*EndpointInfo)
+	localInstanceInformation := NewLocalInstanceInformation()
 	backends := make(map[string]*EndpointInfo)
 	backends["172.16.2.159:3500"] = &EndpointInfo{}
 	backends["172.16.2.160:3500"] = &EndpointInfo{}
 	backends["172.16.2.161:3500"] = &EndpointInfo{}
-	runtimeConfiguration.LocallyRequiredServices["comet"] = backends
+	localInstanceInformation.LocallyRequiredServices["comet"] = backends
 
 	// Channel to get the haproxy status socket commands from our haproxy fake server into the test
 	commands := make(chan string, 5)
@@ -570,7 +601,7 @@ func TestUpdateBackendsNoUpdateRequiredButDownServerMustBeDisabled(t *testing.T)
 		}
 	}(ln)
 
-	restart_required, err := settings.UpdateBackends(&runtimeConfiguration)
+	restart_required, err := settings.UpdateBackends(&runtimeConfiguration, localInstanceInformation)
 
 	assert.Nil(t, err)
 	assert.Equal(t, false, restart_required)
@@ -585,12 +616,12 @@ func TestUpdateBackendsNoCheck(t *testing.T) {
 	settings.HAProxySocket = "/tmp/sock_srv"
 
 	runtimeConfiguration := RuntimeConfiguration{}
-	runtimeConfiguration.LocallyRequiredServices = make(map[string]map[string]*EndpointInfo)
+	localInstanceInformation := NewLocalInstanceInformation()
 	backends := make(map[string]*EndpointInfo)
 	backends["172.16.3.159:3500"] = &EndpointInfo{}
 	backends["172.16.3.160:3500"] = &EndpointInfo{}
 	backends["172.16.3.161:3500"] = &EndpointInfo{}
-	runtimeConfiguration.LocallyRequiredServices["comet"] = backends
+	localInstanceInformation.LocallyRequiredServices["comet"] = backends
 
 	// Channel to get the haproxy status socket commands from our haproxy fake server into the test
 	commands := make(chan string, 5)
@@ -625,7 +656,7 @@ func TestUpdateBackendsNoCheck(t *testing.T) {
 		}
 	}(ln)
 
-	restart_required, err := settings.UpdateBackends(&runtimeConfiguration)
+	restart_required, err := settings.UpdateBackends(&runtimeConfiguration, localInstanceInformation)
 
 	assert.Nil(t, err)
 
@@ -645,12 +676,12 @@ func TestUpdateMultipleBackends(t *testing.T) {
 	settings.HAProxySocket = "/tmp/sock_srv*.sock"
 
 	runtimeConfiguration := RuntimeConfiguration{}
-	runtimeConfiguration.LocallyRequiredServices = make(map[string]map[string]*EndpointInfo)
+	localInstanceInformation := NewLocalInstanceInformation()
 	backends := make(map[string]*EndpointInfo)
 	backends["172.16.2.159:3500"] = &EndpointInfo{}
 	backends["172.16.2.160:3500"] = &EndpointInfo{}
 	backends["172.16.2.161:3500"] = &EndpointInfo{}
-	runtimeConfiguration.LocallyRequiredServices["comet"] = backends
+	localInstanceInformation.LocallyRequiredServices["comet"] = backends
 
 	// Channel to get the haproxy status socket commands from our haproxy fake server into the test
 	commands := make(chan string, 5)
@@ -694,7 +725,7 @@ func TestUpdateMultipleBackends(t *testing.T) {
 	go fnc(ln1)
 	go fnc(ln2)
 
-	restart_required, err := settings.UpdateBackends(&runtimeConfiguration)
+	restart_required, err := settings.UpdateBackends(&runtimeConfiguration, localInstanceInformation)
 
 	assert.Nil(t, err)
 	assert.Equal(t, false, restart_required)

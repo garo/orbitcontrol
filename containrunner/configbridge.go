@@ -235,6 +235,14 @@ func (s *Containrunner) PollConfigurationUpdate() {
 		log.Info("Going to send NewRuntimeConfigurationEvent")
 		s.incomingLoopbackEvents <- NewOrbitEvent(event)
 
+
+		/*
+		msg := fmt.Sprintf("Setting currentConfiguration to help future haproxy configuration to %+v", newConfiguration)
+		if len(msg) > 200 {
+			msg = msg[0:200]
+		}
+		log.Info(msg)
+		*/
 		s.currentConfiguration = newConfiguration
 	}
 }

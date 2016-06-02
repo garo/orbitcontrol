@@ -289,7 +289,9 @@ func (d *RabbitMQQueuer) PublishOrbitEvent(oe OrbitEvent) error {
 // Sends all events to RabbitMQ channel. Used to ensure thread safety. Reads
 // events from the outgoingEvents channel
 func (d *RabbitMQQueuer) outgoingEventDispatcher(outgoingEvents chan OrbitEvent) {
+	log.Debug("Starting rabbitmq outgoing event dispatcher")
 	for oe := range outgoingEvents {
+		log.Debug("Sending outgoing event %+v to rabbitmq", oe)
 		err := d.ch.Publish(
 			"orbitctl.deployment_events", // exchange
 			oe.Type, // routing key

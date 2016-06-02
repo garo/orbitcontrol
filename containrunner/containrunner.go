@@ -38,6 +38,9 @@ type Containrunner struct {
 	haproxyUpdateWindowCurrent int64
 	HaproxyNoUpdatesDelayWindow int64
 	AvailabilityZone           string
+
+	localInstanceInformation *LocalInstanceInformation
+
 }
 
 var configResultPublisher ConfigResultPublisher
@@ -47,15 +50,29 @@ type RuntimeConfiguration struct {
 
 	// First string is service name, second string is backend host:port
 	ServiceBackends map[string]map[string]*EndpointInfo `json:"-"`
+}
 
+type LocalInstanceInformation struct {
 	// Locally required service groups in haproxy, should be refactored away from this struct
-	LocallyRequiredServices map[string]map[string]*EndpointInfo `json:"-" DeepEqual:"skip"`
+	LocallyRequiredServices map[string]map[string]*EndpointInfo
+
+	AvailabilityZone string
+
+}
+
+func NewLocalInstanceInformation() (*LocalInstanceInformation) {
+	i := LocalInstanceInformation{}
+	i.LocallyRequiredServices = make(map[string]map[string]*EndpointInfo)
+
+	return &i
 }
 
 func (s *Containrunner) Init() {
 	rand.Seed(time.Now().UnixNano())
 
 	etcdClient := GetEtcdClient(s.EtcdEndpoints)
+
+	s.localInstanceInformation = NewLocalInstanceInformation()
 
 	globalConfiguration, err := s.GetGlobalOrbitProperties(etcdClient)
 	if err != nil {
@@ -144,9 +161,8 @@ func (s *Containrunner) EventHandler(incomingNetworkEvents <-chan OrbitEvent, in
 					f := func(arguments interface{}) error {
 						log.Debug("Going to push a ConvergeContainerEvent")
 						s.PollConfigurationUpdate()
-						log.Debug("PollConfigurationUpdate done")
 
-						s.HandleConvergeContainersEvent(ConvergeContainersEvent{s.newConfiguration.MachineConfiguration})
+						s.HandleConvergeContainersEvent(ConvergeContainersEvent{s.currentConfiguration.MachineConfiguration})
 						log.Debug("direct call to HandleConvergeContainersEvent is done")
 
 						return nil
@@ -162,16 +178,21 @@ func (s *Containrunner) EventHandler(incomingNetworkEvents <-chan OrbitEvent, in
 
 			// And that the configuration has been stable for 10 seconds
 			atomic.LoadInt64(&s.haproxyUpdateWindowCurrent)+s.HaproxyNoUpdatesDelayWindow < time.Now().Unix() {
-			log.Info(LogString(fmt.Sprintf("Updating haproxy config as no new configurations have detected in %d seconds after first", s.HaproxyNoUpdatesDelayWindow)))
-			conf := NewRuntimeConfigurationEvent{}
-			conf.NewRuntimeConfiguration = s.newConfiguration
+			log.Debug(LogString(fmt.Sprintf("Updating haproxy config as no new configurations have detected in %d seconds after first", s.HaproxyNoUpdatesDelayWindow)))
 
 			s.haproxyUpdateWindowStart = 0
 			s.haproxyUpdateWindowCurrent = 0
-			go s.ConvergeHAProxy(conf)
+
+			msg := fmt.Sprintf("haproxy restart, currentConfiguration: %+v", s.currentConfiguration)
+			if len(msg) > 200 {
+				msg = msg[0:200]
+			}
+			log.Debug(msg)
+
+			s.ConvergeHAProxy()
 		}
 
-		log.Debug("Loop goes around")
+		log.Debug("Loop goes around: %d, %d", s.haproxyUpdateWindowStart, s.haproxyUpdateWindowCurrent)
 
 		if incomingLoopbackEvents == nil && incomingNetworkEvents == nil {
 			return
@@ -226,28 +247,42 @@ func (s *Containrunner) HandleNewRuntimeConfigurationEvent(e NewRuntimeConfigura
 		s.haproxyUpdateWindowCurrent = 0
 
 		log.Info(LogString("Forcing haproxy update 60 seconds after first new update"))
-		go s.ConvergeHAProxy(e)
+		s.ConvergeHAProxy()
 	} else {
-		go s.SoftUpdateHAProxy(e)
+		s.SoftUpdateHAProxy()
 	}
 
 	s.incomingLoopbackEvents <- NewOrbitEvent(ConvergeContainersEvent{e.NewRuntimeConfiguration.MachineConfiguration})
 }
 
-func (s *Containrunner) ConvergeHAProxy(e NewRuntimeConfigurationEvent) {
-	if e.NewRuntimeConfiguration.MachineConfiguration.HAProxyConfiguration != nil {
-		oldRuntimeConfiguration := &e.OldRuntimeConfiguration
-		if !e.OldRuntimeConfigurationValid {
-			oldRuntimeConfiguration = nil
+func (s *Containrunner) ConvergeHAProxy() {
+
+	if s.currentConfiguration.MachineConfiguration.HAProxyConfiguration != nil {
+		err := s.HAProxySettings.ConvergeHAProxy(&s.currentConfiguration, s.localInstanceInformation)
+		if err != nil {
+			log.Error("Error doing ConvergeHAProxy: %+v", err)
 		}
-		s.HAProxySettings.ConvergeHAProxy(&e.NewRuntimeConfiguration, oldRuntimeConfiguration, s.AvailabilityZone)
+	} else {
+		log.Debug("ConvergeHAProxy problem: no HAProxyConfiguration present")
 	}
 }
 
-func (s *Containrunner) SoftUpdateHAProxy(e NewRuntimeConfigurationEvent) {
-	if e.NewRuntimeConfiguration.MachineConfiguration.HAProxyConfiguration != nil && e.NewRuntimeConfiguration.LocallyRequiredServices != nil {
-		log.Debug("Doing soft haproxy update: %s", e.NewRuntimeConfiguration.LocallyRequiredServices)
-		s.HAProxySettings.UpdateBackends(&e.NewRuntimeConfiguration)
+func (s *Containrunner) SoftUpdateHAProxy() {
+	if s.currentConfiguration.MachineConfiguration.HAProxyConfiguration != nil && s.localInstanceInformation != nil && s.localInstanceInformation.LocallyRequiredServices != nil {
+		//log.Debug("Doing soft haproxy update: %s", s.localInstanceInformation.LocallyRequiredServices)
+		s.HAProxySettings.UpdateBackends(&s.currentConfiguration, s.localInstanceInformation)
+	} else {
+		if s.currentConfiguration.MachineConfiguration.HAProxyConfiguration == nil {
+			log.Error("Could not do soft haproxy update: no HAProxyConfiguration")
+		}
+
+		if s.localInstanceInformation == nil {
+			log.Error("Could not do soft haproxy update: no LocalInstanceInformation")
+		}
+
+		if s.localInstanceInformation != nil && s.localInstanceInformation.LocallyRequiredServices == nil {
+			log.Error("Could not do soft haproxy update: no LocallyRequiredServices")
+		}
 	}
 }
 
@@ -306,7 +341,7 @@ func (s *Containrunner) HandleDeploymentEvent(e DeploymentEvent) {
 	case "AutomaticRelaunch":
 		break
 	default:
-		log.Warning("DeploymentEvent action %s is not implemented", e.Action)
+		log.Debug("DeploymentEvent action %s is not implemented", e.Action)
 
 	}
 }

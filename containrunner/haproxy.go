@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
 	"text/template"
@@ -81,42 +80,33 @@ func NewHAProxyEndpoint() *HAProxyEndpoint {
 	return endpoint
 }
 
-func (hac *HAProxySettings) ConvergeHAProxy(configuration *RuntimeConfiguration, oldConfiguration *RuntimeConfiguration, availability_zone string) error {
+func (hac *HAProxySettings) ConvergeHAProxy(configuration *RuntimeConfiguration, localInstanceInformation *LocalInstanceInformation) (error) {
+	log.Debug("ConvergeHAProxy execution started")
 	if configuration.MachineConfiguration.HAProxyConfiguration == nil {
-		fmt.Fprintf(os.Stderr, "Warning, HAProxy config is still nil!\n")
+		log.Warning("Warning, HAProxy config is still nil!")
 		return nil
 	}
 
-	config, err := hac.BuildAndVerifyNewConfig(configuration, availability_zone)
+	config, err := hac.BuildAndVerifyNewConfig(configuration, localInstanceInformation)
 	if err != nil {
 		log.Error(LogString("Error building new HAProxy configuration"))
 		return err
 	}
 
-	reload_required, err := hac.UpdateBackends(configuration)
+	reload_required, err := hac.UpdateBackends(configuration, localInstanceInformation)
 	if err != nil {
 		log.Error(LogString(fmt.Sprintf("Error updating haproxy via stats socket. Error: %+v", err)))
 		return err
 	}
 
-	err = hac.CommitNewConfig(config, reload_required)
-	if err != nil {
-		return err
+	if !reload_required {
+		log.Debug("HAProxy could be updated without changing configuration")
+		return nil
 	}
 
-	if oldConfiguration != nil {
-		if oldConfiguration.MachineConfiguration.HAProxyConfiguration != nil && configuration.MachineConfiguration.HAProxyConfiguration != nil {
-			if oldConfiguration.MachineConfiguration.HAProxyConfiguration.Template != configuration.MachineConfiguration.HAProxyConfiguration.Template ||
-				!reflect.DeepEqual(oldConfiguration.MachineConfiguration.HAProxyConfiguration.Files, configuration.MachineConfiguration.HAProxyConfiguration.Files) {
-				fmt.Fprintf(os.Stderr, "Reloading haproxy because Template has changed")
-				reload_required = true
-			}
-		} else if configuration.MachineConfiguration.HAProxyConfiguration != nil {
-			fmt.Fprintf(os.Stderr, "Reloading haproxy because new configuration has HAProxyConfiguration")
-			reload_required = true
-		}
-	} else {
-		reload_required = true
+	err, reload_required = hac.CommitNewConfig(config, true) // true meand do backups
+	if err != nil {
+		return err
 	}
 
 	if reload_required {
@@ -130,7 +120,7 @@ func (hac *HAProxySettings) ConvergeHAProxy(configuration *RuntimeConfiguration,
 
 func (hac *HAProxySettings) ReloadHAProxy() error {
 	if hac.HAProxyReloadCommand != "" {
-		log.Debug("Reloading haproxy with " + hac.HAProxyReloadCommand)
+		log.Info("Reloading haproxy with " + hac.HAProxyReloadCommand)
 		parts := strings.Fields(hac.HAProxyReloadCommand)
 		head := parts[0]
 		parts = parts[1:len(parts)]
@@ -150,7 +140,7 @@ func (hac *HAProxySettings) ReloadHAProxy() error {
 	return nil
 }
 
-func (hac *HAProxySettings) BuildAndVerifyNewConfig(configuration *RuntimeConfiguration, availability_zone string) (string, error) {
+func (hac *HAProxySettings) BuildAndVerifyNewConfig(configuration *RuntimeConfiguration, localInstanceInformation *LocalInstanceInformation) (string, error) {
 
 	new_config, err := ioutil.TempFile(os.TempDir(), "haproxy_new_config_")
 	if new_config != nil {
@@ -159,7 +149,7 @@ func (hac *HAProxySettings) BuildAndVerifyNewConfig(configuration *RuntimeConfig
 		fmt.Fprintf(os.Stderr, "Error: new_config was nil when creating temp file. Err: %+v\n", err)
 	}
 
-	config, err := hac.GetNewConfig(configuration, availability_zone)
+	config, err := hac.GetNewConfig(configuration, localInstanceInformation)
 	if err != nil {
 		return "", err
 	}
@@ -221,7 +211,7 @@ func (hac *HAProxySettings) BuildAndVerifyNewConfig(configuration *RuntimeConfig
 	return config, nil
 }
 
-func (hac *HAProxySettings) CommitNewConfig(config string, backup bool) error {
+func (hac *HAProxySettings) CommitNewConfig(config string, backup bool) (error, bool) {
 
 	l := HAProxyConfigChangeLog{}
 	var contents []byte
@@ -232,13 +222,21 @@ func (hac *HAProxySettings) CommitNewConfig(config string, backup bool) error {
 
 	l.NewConfig = config
 
+	if config == string(contents) {
+		log.Debug("CommitNewConfig determined that HAProxy configuration file has not changed")
+		return nil, false
+	} 
+
+	log.Info("HAProxy configuration contents has changed, so writing a new file to %s", hac.HAProxyConfigPath + "/" + hac.HAProxyConfigName)
+
+
 	if backup {
 		l.OldConfigBackupFile = hac.HAProxyConfigPath + "/" + hac.HAProxyConfigName + "-" + time.Now().Format(time.RFC3339)
 
 		err = os.Link(hac.HAProxyConfigPath+"/"+hac.HAProxyConfigName, l.OldConfigBackupFile)
 		if err != nil && !os.IsNotExist(err) {
 			log.Error(LogString("Error linking config backup!" + err.Error()))
-			return err
+			return err, false
 		} else if err != nil && os.IsNotExist(err) {
 			l.OldConfigBackupFile = ""
 		}
@@ -249,14 +247,14 @@ func (hac *HAProxySettings) CommitNewConfig(config string, backup bool) error {
 	err = ioutil.WriteFile(hac.HAProxyConfigPath+"/"+hac.HAProxyConfigName, []byte(config), 0664)
 	if err != nil {
 		log.Error(LogString("Could not write new haproxy config!" + err.Error()))
-		return err
+		return err, false
 	}
 
-	return nil
+	return nil, true
 
 }
 
-func (hac *HAProxySettings) GetNewConfig(configuration *RuntimeConfiguration, availability_zone string) (string, error) {
+func (hac *HAProxySettings) GetNewConfig(configuration *RuntimeConfiguration, localInstanceInformation *LocalInstanceInformation) (string, error) {
 
 	funcMap := template.FuncMap{
 		// The name "title" is what the function will be called in the template text.
@@ -277,11 +275,7 @@ func (hac *HAProxySettings) GetNewConfig(configuration *RuntimeConfiguration, av
 				sort.Sort(BackendParametersByNickname(backends))
 			}
 
-			if configuration.LocallyRequiredServices == nil {
-				configuration.LocallyRequiredServices = make(map[string]map[string]*EndpointInfo)
-			}
-
-			configuration.LocallyRequiredServices[service_name] = backend_servers
+			localInstanceInformation.LocallyRequiredServices[service_name] = backend_servers
 
 			return backends, nil
 		},
@@ -291,7 +285,7 @@ func (hac *HAProxySettings) GetNewConfig(configuration *RuntimeConfiguration, av
 
 			if ok {
 				for hostport, endpointInfo := range backend_servers {
-					if endpointInfo != nil && endpointInfo.AvailabilityZone == availability_zone {
+					if endpointInfo != nil && endpointInfo.AvailabilityZone == localInstanceInformation.AvailabilityZone {
 						backends = append(backends, BackendParameters{
 							Nickname:             service_name + "-" + hostport,
 							HostPort:             hostport,
@@ -304,11 +298,7 @@ func (hac *HAProxySettings) GetNewConfig(configuration *RuntimeConfiguration, av
 				sort.Sort(BackendParametersByNickname(backends))
 			}
 
-			if configuration.LocallyRequiredServices == nil {
-				configuration.LocallyRequiredServices = make(map[string]map[string]*EndpointInfo)
-			}
-
-			configuration.LocallyRequiredServices[service_name] = backend_servers
+			localInstanceInformation.LocallyRequiredServices[service_name] = backend_servers
 
 			return backends, nil
 		},
@@ -409,7 +399,7 @@ func (hac *HAProxySettings) GetHaproxyBackends() (current_backends map[string]ma
 	return current_backends, err
 }
 
-func (hac *HAProxySettings) UpdateBackends(configuration *RuntimeConfiguration) (bool, error) {
+func (hac *HAProxySettings) UpdateBackends(configuration *RuntimeConfiguration, localInstanceInformation *LocalInstanceInformation) (bool, error) {
 
 	current_backends, err := hac.GetHaproxyBackends()
 	if err != nil {
@@ -421,7 +411,7 @@ func (hac *HAProxySettings) UpdateBackends(configuration *RuntimeConfiguration) 
 
 	//fmt.Printf("current backends: %+v\n", current_backends)
 
-	for service_name, backend_servers := range configuration.LocallyRequiredServices {
+	for service_name, backend_servers := range localInstanceInformation.LocallyRequiredServices {
 		//fmt.Printf("Service backend for service_name %s: %+v", service_name, backend_servers)
 		// Check that there actually is configured servers for this backend before dooming that haproxy needs to be restarted
 		if _, ok := current_backends[service_name]; ok == false && len(backend_servers) > 0 {
